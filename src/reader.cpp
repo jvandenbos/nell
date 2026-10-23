@@ -603,12 +603,14 @@ qint64 Reader::globalOffset(int chapter, int offset) const {
 }
 
 double Reader::progress() const {
-    if (!isOpen() || pageCount() == 0)
+    if (!isOpen())
         return 0;
-    if (atEnd())
+    // Before the first layout there are no pages, but the place is known,
+    // and reporting 0% then would overwrite the saved progress.
+    if (pageCount() > 0 && atEnd())
         return 1;
     if (m_pdf)
-        return double(m_page + m_columns) / pageCount();
+        return pageCount() ? double(m_page + m_columns) / pageCount() : 0;
     return m_characterCount ? double(globalOffset(m_chapter, m_offset)) / m_characterCount : 0;
 }
 
