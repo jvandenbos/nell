@@ -82,7 +82,9 @@ Item {
             anchors.fill: parent
             source: cover.source.length ? "file://" + cover.source : ""
             // Book covers fill the shape; a landscape PDF page fits inside it.
-            fillMode: implicitWidth > implicitHeight ? Image.PreserveAspectFit : Image.PreserveAspectCrop
+            // Decided once loaded, since the implicit size follows fillMode.
+            fillMode: Image.PreserveAspectCrop
+            onStatusChanged: if (status === Image.Ready && implicitWidth > implicitHeight) fillMode = Image.PreserveAspectFit
             asynchronous: true
             smooth: true
             mipmap: true

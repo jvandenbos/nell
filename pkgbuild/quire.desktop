@@ -1,0 +1,22 @@
+[Desktop Entry]
+Type=Application
+Name=Quire
+GenericName=E-book Reader
+GenericName[da]=E-bogslæser
+GenericName[de]=E-Book-Reader
+GenericName[es]=Lector de libros electrónicos
+GenericName[fr]=Liseuse
+GenericName[nl]=E-booklezer
+Comment=Read EPUB and PDF books
+Comment[da]=Læs EPUB- og PDF-bøger
+Comment[de]=EPUB- und PDF-Bücher lesen
+Comment[es]=Lee libros EPUB y PDF
+Comment[fr]=Lire des livres EPUB et PDF
+Comment[nl]=EPUB- en PDF-boeken lezen
+Exec=quire %f
+Icon=quire
+Terminal=false
+Categories=Office;Viewer;Literature;
+Keywords=ebook;epub;pdf;book;reader;kindle;
+MimeType=application/epub+zip;application/pdf;
+StartupWMClass=quire

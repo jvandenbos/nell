@@ -1,1 +1,18 @@
-{}
+{
+  "%n hr": {
+    "one": "%n hr",
+    "other": "%n hr"
+  },
+  "%n matches": {
+    "one": "%n match",
+    "other": "%n matches"
+  },
+  "%n min": {
+    "one": "%n min",
+    "other": "%n min"
+  },
+  "%n pages left in chapter": {
+    "one": "%n page left in chapter",
+    "other": "%n pages left in chapter"
+  }
+}

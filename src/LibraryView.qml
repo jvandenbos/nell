@@ -17,6 +17,7 @@ Item {
         return library.sorted(prefs.librarySort, filter)
     }
     readonly property var continuing: {
+        library.books  // Re-evaluate when progress or opening times change.
         if (filter.length)
             return []
         const list = library.sorted("recent", "")
