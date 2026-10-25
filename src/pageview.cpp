@@ -86,11 +86,8 @@ void PageView::mouseMoveEvent(QMouseEvent *event) {
     if (!m_dragging && (event->position() - m_pressPoint).manhattanLength() < 6)
         return;
     m_dragging = true;
-    // A selection stays on the page it started on; in a spread both pages
-    // usually share a chapter, but a word index on one PDF page means
-    // nothing on the other.
-    const int column = m_reader->format() == QLatin1String("pdf") ? m_anchorColumn : m_reader->columnAt(event->position());
-    m_reader->select(m_anchorColumn, m_anchor, m_reader->positionAt(column, event->position()));
+    // A selection stays in the chapter it started in (on a PDF, the page).
+    m_reader->select(m_anchorColumn, m_anchor, m_reader->dragPosition(m_anchorColumn, event->position()));
 }
 
 void PageView::mouseReleaseEvent(QMouseEvent *event) {

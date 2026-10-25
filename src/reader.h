@@ -140,6 +140,10 @@ public:
     void paint(QPainter *painter, const QSizeF &size);
     int columnAt(const QPointF &point) const;
     int positionAt(int column, const QPointF &point) const;
+    // Where a drag that started in anchorColumn has reached, as a position
+    // in the anchor's chapter: it stops at the chapter's edge when the
+    // other page belongs to the next or previous chapter.
+    int dragPosition(int anchorColumn, const QPointF &point) const;
     QString linkAt(int column, const QPointF &point) const;
     QString highlightAt(int column, const QPointF &point) const;
     void select(int column, int anchor, int position);
@@ -258,6 +262,8 @@ private:
     QList<QRectF> pdfRects(int page, int start, int end) const;
     QString textOf(int chapter, int start, int end) const;
     void trackReading(int fromPage);
+    double unreadOfPage() const;
+    bool bookmarkInView(const QJsonObject &bookmark) const;
     void annotationsEdited();
     void checkpoint();
     void restore(const QJsonObject &snapshot);

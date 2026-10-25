@@ -995,12 +995,19 @@ int Reader::pagesLeftInChapter() const {
     return qMax(0, nextPage - (m_page + m_columns));
 }
 
+// In fit text, the part of the PDF page in view that's still below.
+double Reader::unreadOfPage() const {
+    if (!m_pdf || !m_fitText)
+        return 0;
+    return double(sliceCount() - m_slice - 1) / sliceCount();
+}
+
 int Reader::minutesLeftInChapter() const {
     if (!isOpen())
         return 0;
     const double speed = m_preferences->readingSpeed();
     if (m_pdf)
-        return int(std::ceil(pagesLeftInChapter() * m_pdfCharactersPerPage / speed / 60));
+        return int(std::ceil((pagesLeftInChapter() + unreadOfPage()) * m_pdfCharactersPerPage / speed / 60));
     const qint64 current = globalOffset(m_chapter, m_offset);
     const qint64 next = nextTocOffset(tocIndex(), current, m_characterCount, m_toc.size(), [this](int i) { return tocOffset(i); });
     return int(std::ceil((next - current) / speed / 60));
@@ -1011,7 +1018,7 @@ int Reader::minutesLeftInBook() const {
         return 0;
     const double speed = m_preferences->readingSpeed();
     if (m_pdf)
-        return int(std::ceil(qMax(0, pageCount() - viewEnd()) * m_pdfCharactersPerPage / speed / 60));
+        return int(std::ceil((qMax(0, pageCount() - viewEnd()) + unreadOfPage()) * m_pdfCharactersPerPage / speed / 60));
     return int(std::ceil((m_characterCount - globalOffset(m_chapter, m_offset)) / speed / 60));
 }
 
@@ -1300,6 +1307,19 @@ int Reader::positionAt(int column, const QPointF &point) const {
     return m_chapters[chapter]->documentLayout()->hitTest(local, Qt::FuzzyHit);
 }
 
+int Reader::dragPosition(int anchorColumn, const QPointF &point) const {
+    // A word index on one PDF page means nothing on the other.
+    if (m_pdf)
+        return positionAt(anchorColumn, point);
+    const int column = columnAt(point);
+    const int chapter = chapterOfPage(m_page + anchorColumn);
+    if (column == anchorColumn || m_page + column >= pageCount() || chapterOfPage(m_page + column) == chapter)
+        return positionAt(column, point);
+    // The other page starts a new chapter, where positions count from its
+    // own start: stop at the edge of this one.
+    return column > anchorColumn ? m_chapters[chapter]->characterCount() - 1 : 0;
+}
+
 QString Reader::linkAt(int column, const QPointF &point) const {
     const int page = m_page + column;
     if (!isOpen() || m_pdf || page >= pageCount())
@@ -1488,15 +1508,20 @@ QString Reader::selectionContext() const {
 
 // ---- Annotations ------------------------------------------------------------
 
+// A bookmark marks a view: a page, or in fit text the slice of a page.
+bool Reader::bookmarkInView(const QJsonObject &bookmark) const {
+    const int page = pageOf(bookmark["chapter"].toInt(), bookmark["offset"].toInt());
+    if (page < m_page || page >= m_page + m_columns)
+        return false;
+    return !m_pdf || !m_fitText || sliceOf(page, bookmark["offset"].toInt()) == m_slice;
+}
+
 bool Reader::bookmarked() const {
     if (!isOpen())
         return false;
-    for (const auto &value : m_bookmarks) {
-        const auto bookmark = value.toObject();
-        const int page = pageOf(bookmark["chapter"].toInt(), bookmark["offset"].toInt());
-        if (page >= m_page && page < m_page + m_columns)
+    for (const auto &value : m_bookmarks)
+        if (bookmarkInView(value.toObject()))
             return true;
-    }
     return false;
 }
 
@@ -1505,17 +1530,16 @@ void Reader::toggleBookmark() {
         return;
     checkpoint();
     for (int i = m_bookmarks.size() - 1; i >= 0; --i) {
-        const auto bookmark = m_bookmarks[i].toObject();
-        const int page = pageOf(bookmark["chapter"].toInt(), bookmark["offset"].toInt());
-        if (page >= m_page && page < m_page + m_columns) {
+        if (bookmarkInView(m_bookmarks[i].toObject())) {
             m_bookmarks.removeAt(i);
             annotationsEdited();
             return;
         }
     }
+    // In fit text, the slice's first word, so the bookmark returns to it.
     const int chapter = m_pdf ? m_page : m_chapter;
-    const int offset = m_pdf ? 0 : m_offset;
-    QString snippet = m_pdf ? textOf(m_page, 0, 30) : textOf(chapter, offset, offset + 160);
+    const int offset = m_pdf && !m_fitText ? 0 : m_offset;
+    QString snippet = m_pdf ? textOf(m_page, offset, offset + 30) : textOf(chapter, offset, offset + 160);
     snippet = snippet.simplified().left(120);
     m_bookmarks.append(QJsonObject{{"chapter", chapter}, {"offset", offset}, {"title", chapterTitle()},
                                    {"snippet", snippet}, {"created", now()}});
@@ -1791,12 +1815,19 @@ void Reader::goToResult(int index) {
         if (!m_searchResults.isEmpty())
             m_pdfSearchHits[chapter] = m_pdf->page(chapter)->search(result["match"].toString(),
                                                                     Poppler::Page::IgnoreCase);
+        // Which match on its page this result is: Poppler finds them in the
+        // same order as the text search did.
+        int occurrence = 0;
+        for (int i = 0; i < index; ++i)
+            if (m_searchResults[i].toMap()["chapter"].toInt() == chapter)
+                ++occurrence;
         // The word the hit starts on, so fit text opens the slice that shows it.
         int word = 0;
         const auto hits = m_pdfSearchHits.value(chapter);
         const auto &words = pdfWords(chapter);
+        const QRectF hit = hits.isEmpty() ? QRectF() : hits[qMin(occurrence, int(hits.size()) - 1)];
         for (int i = 0; !hits.isEmpty() && i < words.size(); ++i)
-            if (words[i].box.intersects(hits.first())) {
+            if (words[i].box.intersects(hit)) {
                 word = i;
                 break;
             }

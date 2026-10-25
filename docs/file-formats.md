@@ -93,6 +93,8 @@ Timestamps are ISO 8601 strings in UTC (`2026-10-23T13:55:02Z`).
 (on or off) and overrides small-print detection, even when detection would
 choose the same. It's left out while the choice is Auto.
 
+A PDF bookmark made in fit text has the first word of its slice as `offset`,
+so it marks that screenful; otherwise a PDF bookmark's `offset` is 0, the page.
 `chapter` and `offset` mean what they mean in the reader (see
 [architecture.md](architecture.md#places-in-a-book)). `color` is `yellow`, `green`, `blue`, `pink`,
 `purple`, or `underline`. `vocabulary` is newest first.

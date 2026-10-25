@@ -538,6 +538,91 @@ private slots:
         QCOMPARE(reader.slice(), slice);
     }
 
+    void pdfPlacesAreKeptToTheSlice()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        write(dir.path() + "/nell.conf", "[reading]\nspeed=3\n");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        const QString id = library.add(makeTextPdf(dir.path() + "/small.pdf", 7, 2));
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(id));
+        reader.setGeometry(1200, 650, 1, 0);
+        QVERIFY(reader.fitText());
+        const int slices = reader.sliceCount();
+        QVERIFY(slices >= 3);
+
+        // A later match on the same page opens the slice that shows it.
+        reader.search("few more");
+        int last = -1;
+        for (int i = 0; i < reader.searchResults().size(); ++i)
+            if (reader.searchResults()[i].toMap()["chapter"].toInt() == 0)
+                last = i;
+        QVERIFY(last > 10);
+        reader.goToResult(0);
+        QCOMPARE(reader.slice(), 0);
+        reader.goToResult(last);
+        QCOMPARE(reader.page(), 0);
+        QCOMPARE(reader.slice(), slices - 1);
+        reader.clearSearch();
+
+        // A bookmark marks its slice, not the whole page, and returns to it.
+        reader.goToPage(0);
+        reader.toggleBookmark();
+        QVERIFY(reader.bookmarked());
+        reader.next();
+        QVERIFY(!reader.bookmarked());
+        reader.toggleBookmark();
+        QCOMPARE(reader.bookmarks().size(), 2);
+        reader.goToPage(1);
+        reader.goTo(reader.bookmarks()[1].toMap()["chapter"].toInt(), reader.bookmarks()[1].toMap()["offset"].toInt());
+        QCOMPARE(reader.page(), 0);
+        QCOMPARE(reader.slice(), 1);
+        QVERIFY(reader.bookmarked());
+
+        // What's left of the page in view counts towards the time left.
+        reader.goToPage(0);
+        const int fromTop = reader.minutesLeftInBook();
+        const int fromTopOfChapter = reader.minutesLeftInChapter();
+        while (reader.slice() + 1 < reader.sliceCount())
+            reader.next();
+        QVERIFY2(reader.minutesLeftInBook() < fromTop,
+                 qPrintable(QString("%1 then %2").arg(fromTop).arg(reader.minutesLeftInBook())));
+        QVERIFY(reader.minutesLeftInChapter() < fromTopOfChapter);
+    }
+
+    void aDragStopsAtTheChapterEdge()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(library.add(makeEpub(dir.path()))));
+        // A spread whose left page ends chapter one and whose right page
+        // starts chapter two.
+        bool found = false;
+        for (int height = 400; height <= 900 && !found; height += 7) {
+            reader.setGeometry(820, height, 2, 20);
+            QTRY_COMPARE(reader.columns(), 2);
+            QTest::qWait(60);
+            found = reader.toc()[1].toMap()["page"].toInt() % 2 == 0;
+        }
+        QVERIFY(found);
+        reader.goToToc(1);
+        QCOMPARE(reader.page(), reader.toc()[1].toMap()["page"].toInt() - 2);
+        const QPointF left(100, 100), right(400 + 100, 60);
+        const int anchor = reader.positionAt(0, left);
+        QVERIFY(anchor > 0);
+        const int position = reader.dragPosition(0, right);
+        QVERIFY(position > anchor);
+        reader.select(0, anchor, position);
+        QVERIFY2(reader.selectionText().endsWith("reading."), qPrintable(reader.selectionText().right(40)));
+        // Back from the right page to the left stops at chapter two's start.
+        const int start = reader.positionAt(1, right);
+        QCOMPARE(reader.dragPosition(1, left), 0);
+        QVERIFY(start > 0);
+    }
+
     void damagedOrNewerNotesAreNeverOverwritten()
     {
         QTemporaryDir dir;

@@ -43,6 +43,13 @@ All notable changes to this project are documented here. The format follows
   is no longer hidden. The README no longer promises no line is ever cut.
 - Small print is measured at the width a page is actually drawn, so a PDF that
   is readable on a full window but tiny in a two-page spread gets fit text.
+- PDF search went to the first match on a page whichever result was picked; it
+  goes to the one picked now.
+- PDF bookmarks in fit text mark the screenful, not the whole page, so each
+  slice has its own and returning finds the slice.
+- Dragging a selection across a two-page spread into the next chapter stops at
+  the chapter's edge instead of selecting from the wrong place.
+- Time left in a PDF in fit text counts the rest of the page in view.
 
 ## [0.3.0] - 2026-10-24
 
