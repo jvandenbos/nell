@@ -20,19 +20,28 @@
 #include "theme.h"
 #include "translator.h"
 
+namespace {
+// Help and version print and exit; they must not need a display either.
+bool printsAndExits(int argc, char *argv[]) {
+    for (int i = 1; i < argc; ++i) {
+        const QByteArray arg(argv[i]);
+        if (arg == "--help" || arg == "-h" || arg == "--help-all" || arg == "--version" || arg == "-v")
+            return true;
+    }
+    return false;
+}
+}
+
 int main(int argc, char *argv[]) {
     // Commands draw no window, so they must not need a display, even where
     // the desktop exports QT_QPA_PLATFORM=wayland.
     const bool command = argc > 1 && isCliCommand(QString::fromLocal8Bit(argv[1]));
-    if (command)
+    if (command || printsAndExits(argc, argv))
         qputenv("QT_QPA_PLATFORM", "offscreen");
 
     QGuiApplication app(argc, argv);
     app.setApplicationName("nell");
     app.setApplicationVersion(NELL_VERSION);
-    Library::adoptQuire(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation),
-                        QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation),
-                        QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation));
 
     // Matches the window to nell.desktop, so the compositor (Wayland app_id)
     // and the launcher pick up the installed icon.
@@ -44,9 +53,12 @@ int main(int argc, char *argv[]) {
     Translator translator;
     app.installTranslator(&translator);
 
+    // Each command decides for itself whether it writes, and so whether
+    // Quire's storage should move first.
     if (command)
         return runCli(app.arguments());
 
+    // Help, version, and bad arguments end here, before any storage is touched.
     QCommandLineParser args;
     args.setApplicationDescription("Reads EPUB and PDF books.\n\n" + cliSummary());
     args.addHelpOption();
@@ -56,6 +68,8 @@ int main(int argc, char *argv[]) {
     if (arguments.value(1) == "open")
         arguments.removeAt(1);
     args.process(arguments);
+
+    adoptQuireStorage();
 
     QQuickStyle::setStyle("Material");
     qmlRegisterType<PageView>("Nell", 1, 0, "PageView");

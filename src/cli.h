@@ -8,3 +8,6 @@
 bool isCliCommand(const QString &word);
 int runCli(const QStringList &arguments);
 QString cliSummary();
+// Moves Quire's storage across before anything opens Nell's, and says so on
+// stderr when part of it couldn't be done, rather than starting on half.
+void adoptQuireStorage();

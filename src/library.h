@@ -51,9 +51,15 @@ public:
     bool saveAnnotations(const QString &id, QJsonObject annotations);
 
     // Nell was called Quire before 0.3.0. Its data, settings, and cache
-    // directories under these roots move across once, unless Nell already
-    // has its own, and the covers the library points into the cache follow.
-    static void adoptQuire(const QString &dataRoot, const QString &configRoot, const QString &cacheRoot);
+    // directories under these roots move across, unless Nell already has its
+    // own, and the covers the library points into the cache follow. Each
+    // step is checked and repeated on the next run if it didn't happen, so a
+    // run that stopped half way is finished later. Returns what went wrong.
+    // Call it only when Nell is about to use its storage for real: a window,
+    // or a command that writes.
+    static QStringList adoptQuire(const QString &dataRoot, const QString &configRoot, const QString &cacheRoot);
+    // Whether Quire's library is still waiting to be moved across.
+    static bool quireWaiting(const QString &dataRoot);
 
     static QString fileId(const QString &path);
     static bool inspect(const QString &path, const QString &cacheDirectory, BookInfo *info, QString *error);

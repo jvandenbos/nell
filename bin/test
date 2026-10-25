@@ -3,9 +3,11 @@ set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 "$ROOT/bin/check-version"
+# The suite starts the app itself to test startup and the commands.
+"$ROOT/bin/build" >/dev/null
 mkdir -p "$ROOT/build/tests"
 cd "$ROOT/build/tests"
 
 qmake6 "$ROOT/tests/nell_tests.pro"
 make -j"$(nproc)"
-QT_QPA_PLATFORM=offscreen ./nell_tests
+NELL_BINARY="$ROOT/build/nell" QT_QPA_PLATFORM=offscreen ./nell_tests

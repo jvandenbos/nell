@@ -37,23 +37,74 @@ QString titleFromFile(const QFileInfo &file) {
 }
 }
 
-void Library::adoptQuire(const QString &dataRoot, const QString &configRoot, const QString &cacheRoot) {
-    auto adopt = [](const QString &root) {
-        QDir dir(root);
-        return dir.exists("quire") && !dir.exists("nell") && dir.rename("quire", "nell");
-    };
-    if (adopt(configRoot))
-        QFile::rename(configRoot + "/nell/quire.conf", configRoot + "/nell/nell.conf");
-    const bool cacheMoved = adopt(cacheRoot);
-    if (!adopt(dataRoot) || !cacheMoved)
-        return;
+namespace {
+bool isEmptyDirectory(const QString &path) {
+    return QDir(path).isEmpty(QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot);
+}
+
+// Moves root/quire to root/nell unless Nell already has something of its own
+// there. An empty nell directory (left by a run that stopped half way, or made
+// by hand) doesn't count as Nell's own. Returns false only when it tried and
+// failed; nothing to move is success.
+bool adoptDirectory(const QString &root, QStringList *problems) {
+    QDir dir(root);
+    if (!dir.exists("quire"))
+        return true;
+    if (dir.exists("nell")) {
+        if (!isEmptyDirectory(dir.filePath("nell")))
+            return true;
+        dir.rmdir("nell");
+    }
+    if (dir.rename("quire", "nell"))
+        return true;
+    *problems << QString("Could not move %1 to %2.").arg(dir.filePath("quire"), dir.filePath("nell"));
+    return false;
+}
+}
+
+QStringList Library::adoptQuire(const QString &dataRoot, const QString &configRoot, const QString &cacheRoot) {
+    // Each part is done, or redone, on its own, so a run that stopped half
+    // way is finished by the next one rather than left as it was.
+    QStringList problems;
+
+    // Settings: the directory, then the file inside it, which keeps its old
+    // name until renamed.
+    adoptDirectory(configRoot, &problems);
+    const QString oldSettings = configRoot + "/nell/quire.conf", settings = configRoot + "/nell/nell.conf";
+    if (QFileInfo::exists(oldSettings) && !QFileInfo::exists(settings) && !QFile::rename(oldSettings, settings))
+        problems << QString("Could not rename %1 to %2.").arg(oldSettings, settings);
+
+    // The cache can always be made again, so failing to move it is no
+    // problem. Covers are only made when a book is added, though, so any
+    // left behind (Nell had a cache already, or the move failed) come over
+    // one by one.
+    QStringList cacheProblems;
+    adoptDirectory(cacheRoot, &cacheProblems);
+    const QDir oldCovers(cacheRoot + "/quire/covers");
+    if (oldCovers.exists() && QDir().mkpath(cacheRoot + "/nell/covers"))
+        for (const auto &name : oldCovers.entryList(QDir::Files))
+            if (!QFileInfo::exists(cacheRoot + "/nell/covers/" + name))
+                QFile::copy(oldCovers.filePath(name), cacheRoot + "/nell/covers/" + name);
+
+    adoptDirectory(dataRoot, &problems);
+
+    // The library points its covers into the cache. Rewriting them is its own
+    // step, done whenever an old path is left, whichever run moved what.
     const QString path = dataRoot + "/nell/library.json";
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
-        return;
-    QJsonObject object = QJsonDocument::fromJson(file.readAll()).object();
+        return problems;
+    const QByteArray bytes = file.readAll();
     file.close();
     const QString from = cacheRoot + "/quire/", to = cacheRoot + "/nell/";
+    if (!bytes.contains(from.toUtf8()))
+        return problems;
+    QJsonParseError error;
+    QJsonObject object = QJsonDocument::fromJson(bytes, &error).object();
+    if (error.error != QJsonParseError::NoError || object["version"].toInt(1) > FormatVersion) {
+        problems << QString("Left the covers in %1 as they were: it can't be read safely.").arg(path);
+        return problems;
+    }
     QJsonArray books = object["books"].toArray();
     for (qsizetype i = 0; i < books.size(); ++i) {
         QJsonObject book = books[i].toObject();
@@ -63,7 +114,14 @@ void Library::adoptQuire(const QString &dataRoot, const QString &configRoot, con
         books[i] = book;
     }
     object["books"] = books;
-    writeJson(path, object);
+    if (!writeJson(path, object))
+        problems << QString("Could not update the covers in %1.").arg(path);
+    return problems;
+}
+
+bool Library::quireWaiting(const QString &dataRoot) {
+    QDir dir(dataRoot);
+    return dir.exists("quire") && (!dir.exists("nell") || isEmptyDirectory(dir.filePath("nell")));
 }
 
 Library::Library(const QString &dataDirectory, const QString &cacheDirectory, QObject *parent)

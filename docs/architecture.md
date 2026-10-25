@@ -19,6 +19,15 @@ main.cpp ──► Translator   ~/.config/omarchy/language → i18n/<lang>.json
 If the first argument is a CLI command (`list`, `add`, `info`, `notes`,
 `skill`), `main.cpp` sets `QT_QPA_PLATFORM=offscreen`, never loads QML, and
 hands over to `cli.cpp`. That is why the commands work over ssh and from agents.
+`--help` and `--version` are handled the same way, before any storage is
+touched.
+
+Quire's storage (Nell's name before 0.3.0) is moved across by
+`Library::adoptQuire` only when Nell is about to use its storage for real: the
+window opening, or `nell add`. Commands that only read leave it alone and say
+so on stderr. Each part (data, settings, cache, the cover paths in
+`library.json`) is checked and redone on its own, so a run that stopped half
+way is finished by the next one; problems go to stderr.
 
 ## The pieces
 

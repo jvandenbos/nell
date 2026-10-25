@@ -12,6 +12,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QStandardPaths>
 #include <cstdio>
 
 namespace {
@@ -23,6 +24,13 @@ void print(const QJsonValue &value) {
 int fail(const QString &message) {
     print(stderr, message);
     return 1;
+}
+
+// Commands that only read leave Quire's library where it is, but say why
+// they don't see it.
+void noteQuire() {
+    if (Library::quireWaiting(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)))
+        print(stderr, "Quire's library hasn't been moved to Nell yet; it moves the first time Nell opens or adds a book.");
 }
 
 struct Command {
@@ -50,6 +58,7 @@ int list(const QStringList &arguments) {
         return fail(command.parser.errorText());
     if (command.parser.isSet("help"))
         return print(stdout, command.parser.helpText()), 0;
+    noteQuire();
     Library library;
     const QVariantList books = library.sorted("recent", {});
     if (command.parser.isSet("json")) {
@@ -77,6 +86,9 @@ int add(const QStringList &arguments) {
     const QStringList files = command.parser.positionalArguments();
     if (files.isEmpty())
         return fail("Name at least one EPUB or PDF file to add.");
+    // Adding writes the library, so it's the one command that brings
+    // Quire's across first; the others only read.
+    adoptQuireStorage();
     Library library;
     QJsonArray added;
     bool ok = true;
@@ -107,6 +119,7 @@ int info(const QStringList &arguments) {
     if (command.parser.positionalArguments().size() != 1)
         return fail("Name one book file or library id.");
     const QString target = command.parser.positionalArguments().first();
+    noteQuire();
     Library library;
     QString id = library.findId(target);
     BookInfo book;
@@ -149,6 +162,7 @@ int notes(const QStringList &arguments) {
         return print(stdout, command.parser.helpText()), 0;
     if (command.parser.positionalArguments().size() != 1)
         return fail("Name one book file or library id.");
+    noteQuire();
     Library library;
     const QString target = command.parser.positionalArguments().first();
     QString id = library.findId(target);
@@ -230,6 +244,15 @@ QString cliSummary() {
            "  notes <book> [--markdown]       Print a book's highlights, notes, and words\n"
            "  skill [install]                 Print the skill for coding agents, or install it\n"
            "Every command takes --json and --help.";
+}
+
+void adoptQuireStorage() {
+    const QStringList problems =
+        Library::adoptQuire(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation),
+                            QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation),
+                            QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation));
+    for (const auto &problem : problems)
+        print(stderr, "nell: " + problem);
 }
 
 bool isCliCommand(const QString &word) {

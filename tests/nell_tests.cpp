@@ -4,6 +4,7 @@
 #include <QPainter>
 #include <QPdfWriter>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -450,17 +451,9 @@ private slots:
     {
         QTemporaryDir dir;
         const QString data = dir.path() + "/data", config = dir.path() + "/config", cache = dir.path() + "/cache";
-        QDir().mkpath(data + "/quire/books");
-        QDir().mkpath(config + "/quire");
-        QDir().mkpath(cache + "/quire/covers");
-        const QString cover = cache + "/quire/covers/abc.jpg";
-        QFile(cover).open(QIODevice::WriteOnly);
-        QFile(config + "/quire/quire.conf").open(QIODevice::WriteOnly);
-        QFile(data + "/quire/books/abc.json").open(QIODevice::WriteOnly);
-        QVERIFY(Library::writeJson(data + "/quire/library.json",
-                                   QJsonObject{{"version", 1}, {"books", QJsonArray{QJsonObject{{"id", "abc"}, {"cover", cover}}}}}));
+        const QString cover = makeQuire(dir.path());
 
-        Library::adoptQuire(data, config, cache);
+        QVERIFY(Library::adoptQuire(data, config, cache).isEmpty());
         QVERIFY(!QDir(data + "/quire").exists() && !QDir(config + "/quire").exists() && !QDir(cache + "/quire").exists());
         QVERIFY(QFile::exists(data + "/nell/books/abc.json"));
         QVERIFY(QFile::exists(config + "/nell/nell.conf"));
@@ -471,9 +464,97 @@ private slots:
 
         // Once Nell has its own, a leftover Quire directory is left alone.
         QDir().mkpath(data + "/quire");
-        Library::adoptQuire(data, config, cache);
+        QVERIFY(Library::adoptQuire(data, config, cache).isEmpty());
         QVERIFY(QDir(data + "/quire").exists());
         QVERIFY(QFile::exists(data + "/nell/library.json"));
+        QVERIFY(!Library::quireWaiting(data));
+    }
+
+    void quireAdoptionResumes()
+    {
+        QTemporaryDir dir;
+        const QString data = dir.path() + "/data", config = dir.path() + "/config", cache = dir.path() + "/cache";
+        makeQuire(dir.path());
+        // An earlier run moved the settings directory but not the file in
+        // it, and moved the cache but not the data; an empty nell data
+        // directory was left behind.
+        QVERIFY(QDir().rename(config + "/quire", config + "/nell"));
+        QVERIFY(QDir().rename(cache + "/quire", cache + "/nell"));
+        QVERIFY(QDir().mkpath(data + "/nell"));
+        QVERIFY(Library::quireWaiting(data));
+
+        QVERIFY(Library::adoptQuire(data, config, cache).isEmpty());
+        QVERIFY(!QDir(data + "/quire").exists());
+        QVERIFY(QFile::exists(data + "/nell/books/abc.json"));
+        QVERIFY(QFile::exists(config + "/nell/nell.conf"));
+        QVERIFY(!QFile::exists(config + "/nell/quire.conf"));
+        Library library(data + "/nell", cache + "/nell");
+        QCOMPARE(library.books().value(0).toMap()["cover"].toString(), cache + "/nell/covers/abc.jpg");
+
+        // A cache Nell already had gains Quire's covers but is otherwise its own.
+        QTemporaryDir second;
+        const QString data2 = second.path() + "/data", config2 = second.path() + "/config", cache2 = second.path() + "/cache";
+        makeQuire(second.path());
+        write(cache2 + "/nell/other/thing", "x");
+        QVERIFY(Library::adoptQuire(data2, config2, cache2).isEmpty());
+        QVERIFY(QFile::exists(cache2 + "/nell/covers/abc.jpg"));
+        QVERIFY(QFile::exists(cache2 + "/nell/other/thing"));
+        Library library2(data2 + "/nell", cache2 + "/nell");
+        QCOMPARE(library2.books().value(0).toMap()["cover"].toString(), cache2 + "/nell/covers/abc.jpg");
+    }
+
+    void startupLeavesStorageAloneUntilNeeded()
+    {
+        QTemporaryDir dir;
+        makeQuire(dir.path());
+        auto quireThere = [&] {
+            return QDir(dir.path() + "/data/quire").exists() && QDir(dir.path() + "/config/quire").exists() &&
+                   QDir(dir.path() + "/cache/quire").exists() && !QFileInfo::exists(dir.path() + "/data/nell") &&
+                   !QFileInfo::exists(dir.path() + "/config/nell") && !QFileInfo::exists(dir.path() + "/cache/nell");
+        };
+
+        auto version = runNell(dir.path(), {"--version"});
+        QCOMPARE(version.code, 0);
+        QVERIFY2(QRegularExpression(R"(^nell \d+\.\d+\.\d+\n$)").match(QString::fromUtf8(version.out)).hasMatch(),
+                 version.out.constData());
+        QVERIFY(quireThere());
+        QCOMPARE(runNell(dir.path(), {"--help"}).code, 0);
+        QVERIFY(runNell(dir.path(), {"--no-such-option"}).code != 0);
+        QCOMPARE(runNell(dir.path(), {"open", "--version"}).code, 0);
+        QCOMPARE(runNell(dir.path(), {"add", "--help"}).code, 0);
+        auto list = runNell(dir.path(), {"list"});
+        QCOMPARE(list.code, 0);
+        QVERIFY2(list.err.contains("hasn't been moved"), list.err.constData());
+        QVERIFY(runNell(dir.path(), {"notes", "abc"}).code != 0);
+        QVERIFY(quireThere());
+
+        // Adding a book is a write, so Quire's library comes across first
+        // and the new book joins it.
+        auto add = runNell(dir.path(), {"add", makePdf(dir.path() + "/paper.pdf", 1)});
+        QVERIFY2(add.code == 0, add.err.constData());
+        QVERIFY(!QDir(dir.path() + "/data/quire").exists());
+        QVERIFY(QFile::exists(dir.path() + "/config/nell/nell.conf"));
+        Library library(dir.path() + "/data/nell", dir.path() + "/cache/nell");
+        QCOMPARE(library.books().size(), 2);
+    }
+
+    void windowStartsAndAdoptsQuire()
+    {
+        QTemporaryDir dir;
+        makeQuire(dir.path());
+        QProcess nell;
+        nell.setProcessEnvironment(nellEnvironment(dir.path()));
+        nell.start(nellBinary(), {});
+        QVERIFY2(nell.waitForStarted(), qPrintable(nell.errorString()));
+        QTRY_VERIFY_WITH_TIMEOUT(QFile::exists(dir.path() + "/data/nell/library.json"), 15000);
+        // The window loads and stays up: QML that fails to load exits at once.
+        QTest::qWait(1500);
+        QVERIFY2(nell.state() == QProcess::Running, nell.readAllStandardError().constData());
+        nell.terminate();
+        if (!nell.waitForFinished(5000))
+            nell.kill();
+        QVERIFY(!QDir(dir.path() + "/data/quire").exists());
+        QVERIFY(QFile::exists(dir.path() + "/config/nell/nell.conf"));
     }
 
     void readingSpeedIsLearnedSlowly()
@@ -516,6 +597,63 @@ private slots:
     }
 
 private:
+    struct Run {
+        int code = -1;
+        QByteArray out, err;
+    };
+
+    static QString nellBinary()
+    {
+        const QString binary = qEnvironmentVariable("NELL_BINARY", QCoreApplication::applicationDirPath() + "/../nell");
+        if (!QFileInfo(binary).isExecutable())
+            qFatal("No nell binary at %s; run bin/test, which builds it.", qPrintable(binary));
+        return binary;
+    }
+
+    // Everything the app could touch, inside home: never the real storage.
+    static QProcessEnvironment nellEnvironment(const QString &home)
+    {
+        QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+        environment.insert("HOME", home);
+        environment.insert("XDG_DATA_HOME", home + "/data");
+        environment.insert("XDG_CONFIG_HOME", home + "/config");
+        environment.insert("XDG_CACHE_HOME", home + "/cache");
+        environment.insert("XDG_STATE_HOME", home + "/state");
+        environment.insert("QT_QPA_PLATFORM", "offscreen");
+        return environment;
+    }
+
+    static Run runNell(const QString &home, const QStringList &arguments)
+    {
+        QProcess nell;
+        nell.setProcessEnvironment(nellEnvironment(home));
+        nell.start(nellBinary(), arguments);
+        Run run;
+        if (!nell.waitForFinished(30000)) {
+            nell.kill();
+            nell.waitForFinished();
+            return run;
+        }
+        run.code = nell.exitStatus() == QProcess::NormalExit ? nell.exitCode() : -1;
+        run.out = nell.readAllStandardOutput();
+        run.err = nell.readAllStandardError();
+        return run;
+    }
+
+    // Quire's data, settings, and cache under root, as 0.2.0 left them, with
+    // one book whose cover is in the cache. Returns the cover's path.
+    static QString makeQuire(const QString &root)
+    {
+        const QString data = root + "/data", config = root + "/config", cache = root + "/cache";
+        const QString cover = cache + "/quire/covers/abc.jpg";
+        write(cover, "jpeg");
+        write(config + "/quire/quire.conf", "[reading]\nfontSize=24\n");
+        write(data + "/quire/books/abc.json", "{\"version\": 1}");
+        Library::writeJson(data + "/quire/library.json",
+                           QJsonObject{{"version", 1}, {"books", QJsonArray{QJsonObject{{"id", "abc"}, {"cover", cover}}}}});
+        return cover;
+    }
+
     static void write(const QString &path, const QByteArray &contents)
     {
         QDir().mkpath(QFileInfo(path).absolutePath());

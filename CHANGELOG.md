@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `nell --version`, `--help`, a mistyped option, and the commands that only
+  read (`list`, `info`, `notes`, `skill`) no longer move Quire's library. It
+  moves when the window opens or `nell add` writes, each part (data,
+  settings, cache) is finished by the next run if one stopped half way, an
+  empty `nell` directory no longer blocks it, and anything that can't be moved
+  is reported on stderr.
+
 ## [0.3.0] - 2026-10-24
 
 ### Changed
