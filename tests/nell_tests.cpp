@@ -576,6 +576,59 @@ private slots:
         QCOMPARE(library.annotations(id).object["bookmarks"].toArray().size(), 1);
     }
 
+    void twoLibrariesKeepEachOthersBooks()
+    {
+        // A window and `nell add`, each with the library as it was when it started.
+        QTemporaryDir dir;
+        Library window(dir.path() + "/data", dir.path() + "/cache");
+        Library command(dir.path() + "/data", dir.path() + "/cache");
+        const QString epub = window.add(makeEpub(dir.path()));
+        const QString pdf = command.add(makePdf(dir.path() + "/paper.pdf", 1));
+        QVERIFY(!epub.isEmpty() && !pdf.isEmpty());
+        window.touch(epub, 0.5);
+        Library after(dir.path() + "/data", dir.path() + "/cache");
+        QCOMPARE(after.books().size(), 2);
+        QCOMPARE(after.book(epub)["progress"].toDouble(), 0.5);
+        QCOMPARE(window.books().size(), 2);
+        command.remove(epub);
+        QCOMPARE(Library(dir.path() + "/data", dir.path() + "/cache").books().size(), 1);
+    }
+
+    void twoReadersMergeTheirNotes()
+    {
+        QTemporaryDir dir;
+        Library one(dir.path() + "/data", dir.path() + "/cache");
+        const QString id = one.add(makeEpub(dir.path()));
+        Library two(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        Reader first(&one, &preferences), second(&two, &preferences);
+        QVERIFY(first.openBook(id) && second.openBook(id));
+        first.setGeometry(400, 500, 1, 0);
+        second.setGeometry(400, 500, 1, 0);
+        first.select(0, 2, 9);
+        const QString kept = first.highlight("green");
+        second.toggleBookmark();
+        first.close();
+        second.close();
+        QJsonObject saved = one.annotations(id).object;
+        QCOMPARE(saved["highlights"].toArray().size(), 1);
+        QCOMPARE(saved["bookmarks"].toArray().size(), 1);
+
+        // One removes a highlight while the other adds one: both stand.
+        QVERIFY(first.openBook(id) && second.openBook(id));
+        first.setGeometry(400, 500, 1, 0);
+        second.setGeometry(400, 500, 1, 0);
+        first.removeHighlight(kept);
+        second.select(0, 20, 30);
+        const QString added = second.highlight("blue");
+        first.close();
+        second.close();
+        saved = one.annotations(id).object;
+        QCOMPARE(saved["highlights"].toArray().size(), 1);
+        QCOMPARE(saved["highlights"].toArray()[0].toObject()["id"].toString(), added);
+        QCOMPARE(saved["bookmarks"].toArray().size(), 1);
+    }
+
     void quireDataMovesToNell()
     {
         QTemporaryDir dir;

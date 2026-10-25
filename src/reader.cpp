@@ -201,15 +201,13 @@ bool Reader::openBook(const QString &id) {
     m_id = id;
 
     Store store = m_library->annotations(id);
-    if (m_unsaved.contains(id)) {
-        store.state = StoreState::Valid;
-        store.object = m_unsaved.value(id);
-    }
     m_notesLocked = !store.writable();
     if (m_notesLocked)
         m_library->reportStorageProblem(store.problem);
     m_savedAnnotations = store.object;
-    const QJsonObject &saved = m_savedAnnotations;
+    const QJsonObject saved = m_unsaved.contains(id) && !m_notesLocked ? m_unsaved[id].first : store.object;
+    if (m_unsaved.contains(id) && !m_notesLocked)
+        m_savedAnnotations = m_unsaved[id].second;
     m_bookmarks = saved["bookmarks"].toArray();
     m_highlights = saved["highlights"].toArray();
     m_vocabulary = saved["vocabulary"].toArray();
@@ -1745,7 +1743,8 @@ bool Reader::save() {
         return true;
     // Notes another book couldn't save get another try.
     for (auto it = m_unsaved.begin(); it != m_unsaved.end();)
-        it = it.key() != m_id && m_library->saveAnnotations(it.key(), it.value()) ? m_unsaved.erase(it) : std::next(it);
+        it = it.key() != m_id && m_library->saveAnnotations(it.key(), it->first, it->second) ? m_unsaved.erase(it)
+                                                                                              : std::next(it);
 
     const int chapter = m_pdf ? m_page : m_chapter;
     QJsonObject annotations = m_savedAnnotations;
@@ -1762,12 +1761,22 @@ bool Reader::save() {
         annotations.remove("fitText");
     bool saved = false;
     if (!m_notesLocked) {
-        saved = m_library->saveAnnotations(m_id, annotations);
+        QJsonObject written;
+        saved = m_library->saveAnnotations(m_id, annotations, m_savedAnnotations, &written);
         if (saved) {
             m_unsaved.remove(m_id);
-            m_savedAnnotations = annotations;
+            m_savedAnnotations = written;
+            // Marks another Nell saved meanwhile now show here too.
+            if (written["bookmarks"].toArray() != m_bookmarks || written["highlights"].toArray() != m_highlights ||
+                written["vocabulary"].toArray() != m_vocabulary) {
+                m_bookmarks = written["bookmarks"].toArray();
+                m_highlights = written["highlights"].toArray();
+                m_vocabulary = written["vocabulary"].toArray();
+                emit annotationsChanged();
+                emit repaint();
+            }
         } else {
-            m_unsaved.insert(m_id, annotations);
+            m_unsaved.insert(m_id, {annotations, m_savedAnnotations});
             setError(m_library->error());
         }
     }

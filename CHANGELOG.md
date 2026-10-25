@@ -19,6 +19,9 @@ All notable changes to this project are documented here. The format follows
   as it is, and stops saving to it (`Library.storageProblems` lists them).
   Fields Nell doesn't know are kept when it saves. Notes that fail to save are
   kept and saved on the next try instead of being dropped when the book closes.
+- Two Nells writing at once (the window and `nell add`, or two windows) no
+  longer lose each other's changes: each save locks the file, rereads it, and
+  merges books by id and notes mark by mark.
 
 ## [0.3.0] - 2026-10-24
 

@@ -14,6 +14,16 @@ can say so; the app works on without saving to that file. Fields Nell doesn't
 know, at the top level or inside an entry, are kept when it writes a file
 back, so an older Nell doesn't strip what a newer one added.
 
+More than one Nell can write at once (a window and `nell add`, or two
+windows). Every write takes a `QLockFile` beside the file (`library.json.lock`,
+`books/<id>.json.lock`, removed when done), reads the file again, and applies
+its change to what's there now: books are kept from both sides by `id`, and the
+newest `opened` wins a book's progress. A book's notes are merged three ways
+against what that Nell last read: bookmarks by `chapter` and `offset`,
+highlights by `id`, words by `word`; a mark only one side changed takes that
+change, and where both changed the same one, the Nell saving now wins. The
+write itself is still a `QSaveFile` replace.
+
 Timestamps are ISO 8601 strings in UTC (`2026-10-23T13:55:02Z`).
 
 ## `~/.local/share/nell/library.json`

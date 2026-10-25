@@ -10,6 +10,8 @@
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QLockFile>
+#include <QSet>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QStandardPaths>
@@ -92,8 +94,13 @@ QStringList Library::adoptQuire(const QString &dataRoot, const QString &configRo
     // step, done whenever an old path is left, whichever run moved what.
     const QString path = dataRoot + "/nell/library.json";
     QFile file(path);
-    if (!file.open(QIODevice::ReadOnly))
+    if (!file.exists())
         return problems;
+    QLockFile lock(path + ".lock");
+    if (!lock.tryLock(LockTimeout) || !file.open(QIODevice::ReadOnly)) {
+        problems << QString("Could not open %1 to update its covers.").arg(path);
+        return problems;
+    }
     const QByteArray bytes = file.readAll();
     file.close();
     const QString from = cacheRoot + "/quire/", to = cacheRoot + "/nell/";
@@ -216,29 +223,29 @@ QString Library::add(const QString &pathOrUrl) {
         setError(error);
         return {};
     }
-    const int existing = indexOf(info.id);
-    if (existing >= 0) {
-        // The same book from somewhere new: follow the file.
-        auto book = m_books[existing].toMap();
-        if (book["path"].toString() != info.path) {
-            book["path"] = info.path;
-            m_books[existing] = book;
-            save();
-            emit changed();
-        }
+    const int index = indexOf(info.id);
+    if (index >= 0 && m_books[index].toMap()["path"] == info.path)
         return info.id;
-    }
-    QVariantMap book{{"id", info.id},          {"path", info.path},   {"format", info.format},
-                     {"title", info.title},    {"author", info.author}, {"language", info.language},
-                     {"cover", makeCover(info)}, {"progress", 0.0},   {"added", now()},
-                     {"opened", QString()},   {"finished", false}};
-    m_books.prepend(book);
-    if (!save()) {
-        m_books.removeFirst();
-        return {};
-    }
-    emit changed();
-    return info.id;
+    auto entry = [&] {
+        return QVariantMap{{"id", info.id},          {"path", info.path},   {"format", info.format},
+                           {"title", info.title},    {"author", info.author}, {"language", info.language},
+                           {"cover", makeCover(info)}, {"progress", 0.0},   {"added", now()},
+                           {"opened", QString()},   {"finished", false}};
+    };
+    // The same book from somewhere new follows the file. Asked of the
+    // library on disk, which another Nell may have added it to meanwhile.
+    const bool saved = update([&](QVariantList &books) {
+        for (auto &value : books) {
+            auto book = value.toMap();
+            if (book["id"] != info.id)
+                continue;
+            book["path"] = info.path;
+            value = book;
+            return;
+        }
+        books.prepend(entry());
+    });
+    return saved || index >= 0 ? info.id : QString();
 }
 
 int Library::addUrls(const QVariantList &urls) {
@@ -250,14 +257,15 @@ int Library::addUrls(const QVariantList &urls) {
 }
 
 void Library::remove(const QString &id) {
-    const int index = indexOf(id);
-    if (index < 0)
+    if (indexOf(id) < 0)
         return;
     // The book's notes stay in books/<id>.json, so adding it again later
     // brings them back.
-    m_books.removeAt(index);
-    save();
-    emit changed();
+    update([&](QVariantList &books) {
+        for (qsizetype i = books.size() - 1; i >= 0; --i)
+            if (books[i].toMap()["id"] == id)
+                books.removeAt(i);
+    });
 }
 
 QVariantMap Library::book(const QString &id) const {
@@ -298,17 +306,24 @@ QVariantList Library::sorted(const QString &sort, const QString &filter) const {
 void Library::clearError() { setError({}); }
 
 void Library::touch(const QString &id, double progress) {
-    const int index = indexOf(id);
-    if (index < 0)
+    if (indexOf(id) < 0)
         return;
-    auto book = m_books[index].toMap();
-    book["progress"] = progress;
-    book["opened"] = now();
-    if (progress >= 0.995)
-        book["finished"] = true;
-    m_books[index] = book;
-    save();
-    emit changed();
+    const QString opened = now();
+    update([&](QVariantList &books) {
+        for (auto &value : books) {
+            auto book = value.toMap();
+            if (book["id"] != id)
+                continue;
+            // The newest reading wins; ISO 8601 in UTC sorts as text.
+            if (book["opened"].toString() <= opened) {
+                book["progress"] = progress;
+                book["opened"] = opened;
+            }
+            if (progress >= 0.995)
+                book["finished"] = true;
+            value = book;
+        }
+    });
 }
 
 QString Library::findId(const QString &pathOrId) const {
@@ -350,19 +365,106 @@ Store Library::readStore(const QString &path) {
 
 Store Library::annotations(const QString &id) const { return readStore(m_dataDirectory + "/books/" + id + ".json"); }
 
-bool Library::saveAnnotations(const QString &id, QJsonObject annotations) {
+namespace {
+// One list of marks merged three ways: base is what this Nell read, ours what
+// it has now, theirs what's on disk. A mark only one side changed takes that
+// side's change, additions from both are kept, and where both changed the
+// same mark ours wins.
+QJsonArray mergeMarks(const QJsonArray &base, const QJsonArray &ours, const QJsonArray &theirs,
+                      const std::function<QString(const QJsonObject &)> &key) {
+    QHash<QString, QJsonObject> baseByKey, oursByKey, theirsByKey;
+    for (const auto &value : base)
+        baseByKey.insert(key(value.toObject()), value.toObject());
+    for (const auto &value : ours)
+        oursByKey.insert(key(value.toObject()), value.toObject());
+    for (const auto &value : theirs)
+        theirsByKey.insert(key(value.toObject()), value.toObject());
+    QJsonArray merged;
+    for (const auto &value : ours) {
+        const QJsonObject mark = value.toObject();
+        const QString k = key(mark);
+        const bool inBase = baseByKey.contains(k), inTheirs = theirsByKey.contains(k);
+        if (inBase && !inTheirs && mark == baseByKey[k])
+            continue;  // They removed it and we didn't touch it.
+        if (inBase && inTheirs && mark == baseByKey[k])
+            merged << theirsByKey[k];  // Only they changed it, if anyone did.
+        else
+            merged << mark;
+    }
+    for (const auto &value : theirs) {
+        const QString k = key(value.toObject());
+        if (!oursByKey.contains(k) && !baseByKey.contains(k))
+            merged << value;  // They added it.
+    }
+    return merged;
+}
+}
+
+QJsonObject Library::mergeAnnotations(const QJsonObject &base, const QJsonObject &ours, const QJsonObject &theirs) {
+    QJsonObject merged = theirs;
+    // Settings and anything this Nell doesn't know: ours where we changed
+    // it, theirs otherwise. The place is always ours, the reader in front of us.
+    QSet<QString> keys;
+    for (const auto &object : {base, ours, theirs})
+        for (const auto &k : object.keys())
+            keys << k;
+    for (const auto &k : keys) {
+        if (k == QLatin1String("bookmarks") || k == QLatin1String("highlights") || k == QLatin1String("vocabulary"))
+            continue;
+        if (k == QLatin1String("position") || ours.value(k) != base.value(k)) {
+            if (ours.contains(k))
+                merged[k] = ours[k];
+            else
+                merged.remove(k);
+        }
+    }
+    auto at = [](const QJsonObject &mark) {
+        return QString("%1:%2").arg(mark["chapter"].toInt()).arg(mark["offset"].toInt());
+    };
+    merged["bookmarks"] = mergeMarks(base["bookmarks"].toArray(), ours["bookmarks"].toArray(),
+                                     theirs["bookmarks"].toArray(), at);
+    merged["highlights"] = mergeMarks(base["highlights"].toArray(), ours["highlights"].toArray(),
+                                      theirs["highlights"].toArray(),
+                                      [](const QJsonObject &mark) { return mark["id"].toString(); });
+    QJsonArray words = mergeMarks(base["vocabulary"].toArray(), ours["vocabulary"].toArray(),
+                                  theirs["vocabulary"].toArray(),
+                                  [](const QJsonObject &mark) { return mark["word"].toString().toLower(); });
+    // Words are kept newest first.
+    QVariantList list = words.toVariantList();
+    std::stable_sort(list.begin(), list.end(), [](const QVariant &a, const QVariant &b) {
+        return a.toMap()["created"].toString() > b.toMap()["created"].toString();
+    });
+    merged["vocabulary"] = QJsonArray::fromVariantList(list);
+    return merged;
+}
+
+bool Library::saveAnnotations(const QString &id, const QJsonObject &annotations, const QJsonObject &base,
+                              QJsonObject *saved) {
     const QString path = m_dataDirectory + "/books/" + id + ".json";
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QLockFile lock(path + ".lock");
+    if (!lock.tryLock(LockTimeout)) {
+        setError(tr("Your notes are busy in another Nell; they'll be saved on the next try."));
+        return false;
+    }
     const Store existing = readStore(path);
     if (!existing.writable()) {
         reportStorageProblem(existing.problem);
         setError(existing.problem);
         return false;
     }
-    annotations["version"] = FormatVersion;
-    if (writeJson(path, annotations))
-        return true;
-    setError(tr("Could not save your place and notes in %1.").arg(m_dataDirectory));
-    return false;
+    // Another Nell may have saved this book's notes since we read them.
+    QJsonObject merged = existing.state == StoreState::Valid && existing.object != base
+                             ? mergeAnnotations(base, annotations, existing.object)
+                             : annotations;
+    merged["version"] = FormatVersion;
+    if (!writeJson(path, merged)) {
+        setError(tr("Could not save your place and notes in %1.").arg(m_dataDirectory));
+        return false;
+    }
+    if (saved)
+        *saved = merged;
+    return true;
 }
 
 // QSaveFile writes beside the target and renames it into place, so a crash
@@ -385,18 +487,39 @@ void Library::load() {
         reportStorageProblem(store.problem);
 }
 
-bool Library::save() {
-    if (!m_libraryWritable) {
-        setError(tr("The library can't be saved: %1").arg(m_storageProblems.value(0)));
+// Every change is made to the library as it is on disk at that moment, under
+// a lock, so a book another Nell (or `nell add`) saved since this one loaded
+// is kept rather than written over. QSaveFile still makes the write itself
+// all or nothing.
+bool Library::update(const std::function<void(QVariantList &books)> &change) {
+    const QString path = m_dataDirectory + "/library.json";
+    QDir().mkpath(m_dataDirectory);
+    QLockFile lock(path + ".lock");
+    if (!lock.tryLock(LockTimeout)) {
+        setError(tr("The library is busy in another Nell; try again."));
         return false;
     }
-    QJsonObject object = m_libraryObject;
+    const Store store = readStore(path);
+    if (!store.writable()) {
+        m_libraryWritable = false;
+        reportStorageProblem(store.problem);
+        setError(tr("The library can't be saved: %1").arg(store.problem));
+        return false;
+    }
+    QVariantList books = store.object["books"].toArray().toVariantList();
+    change(books);
+    QJsonObject object = store.object;
     object["version"] = FormatVersion;
-    object["books"] = QJsonArray::fromVariantList(m_books);
-    if (writeJson(m_dataDirectory + "/library.json", object))
-        return true;
-    setError(tr("Could not save the library in %1.").arg(m_dataDirectory));
-    return false;
+    object["books"] = QJsonArray::fromVariantList(books);
+    if (!writeJson(path, object)) {
+        setError(tr("Could not save the library in %1.").arg(m_dataDirectory));
+        return false;
+    }
+    m_libraryWritable = true;
+    m_libraryObject = object;
+    m_books = books;
+    emit changed();
+    return true;
 }
 
 void Library::reportStorageProblem(const QString &problem) {

@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QStringList>
 #include <QVariantList>
+#include <functional>
 
 // What the library knows about one book file without opening it for reading.
 struct BookInfo {
@@ -46,6 +47,8 @@ class Library : public QObject {
 
 public:
     static constexpr int FormatVersion = 1;
+    // How long a save waits for another Nell to finish its own, in ms.
+    static constexpr int LockTimeout = 5000;
 
     explicit Library(const QString &dataDirectory = {}, const QString &cacheDirectory = {}, QObject *parent = nullptr);
 
@@ -72,9 +75,12 @@ public:
     // A book's notes as stored. Unknown fields are kept, so writing back
     // what was read loses nothing a newer Nell added.
     Store annotations(const QString &id) const;
-    // Refuses, and says why in error, when the file on disk can't be read
-    // safely, rather than replacing it.
-    bool saveAnnotations(const QString &id, QJsonObject annotations);
+    // Saves a book's notes, merged with any another Nell saved since base
+    // was read, and hands back what was written. Refuses, and says why in
+    // error, when the file on disk can't be read safely.
+    bool saveAnnotations(const QString &id, const QJsonObject &annotations, const QJsonObject &base,
+                         QJsonObject *saved = nullptr);
+    static QJsonObject mergeAnnotations(const QJsonObject &base, const QJsonObject &ours, const QJsonObject &theirs);
 
     // Nell was called Quire before 0.3.0. Its data, settings, and cache
     // directories under these roots move across, unless Nell already has its
@@ -100,7 +106,7 @@ signals:
 
 private:
     void load();
-    bool save();
+    bool update(const std::function<void(QVariantList &books)> &change);
     void setError(const QString &message);
     int indexOf(const QString &id) const;
     QString makeCover(const BookInfo &info);

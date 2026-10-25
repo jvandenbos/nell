@@ -300,12 +300,14 @@ private:
     QString m_selectedHighlight;
     QVariantList m_searchResults;
     int m_searchChapter = -1, m_searchStart = -1, m_searchEnd = -1;
-    // The notes file as read, so fields this version doesn't know are kept.
+    // The notes file as last read or written: fields this version doesn't
+    // know are kept from it, and it's the base a save merges against.
     QJsonObject m_savedAnnotations;
     bool m_notesLocked = false;
-    // Notes that failed to save, by book, written on the next save and used
-    // in place of the file if the book is opened again first.
-    QHash<QString, QJsonObject> m_unsaved;
+    // Notes that failed to save, by book, with what was read before them:
+    // written on the next save, and used in place of the file if the book
+    // is opened again first.
+    QHash<QString, QPair<QJsonObject, QJsonObject>> m_unsaved;
     QTimer m_saveTimer;
     QTimer m_layoutTimer;
     bool m_readOnly = false;
