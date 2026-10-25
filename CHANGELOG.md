@@ -6,6 +6,49 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `Ctrl+G` goes to a page or a percentage. `P` cycles the progress corner,
+  which is now a button with a menu of its five modes, percent read among them.
+- Library filters: All, Reading, Finished.
+- "Locate File…" for a book whose file has moved, from its menu or the message
+  shown when it won't open; the file must be the same book.
+- Undo in the message after removing a highlight, note, bookmark, or word.
+- Edit Note and Show Definition buttons on the Notes and Words lists; Retry
+  when a dictionary lookup fails.
+- Reduce motion, under Appearance: no sliding page turns or fading controls.
+- Previous and next chevrons in the page margins on hover.
+- Screen reader names, roles, and checked states on every control, and one
+  keyboard focus ring (2 px in the accent, 2 px clear) on Nell's own controls.
+
+### Changed
+
+- Text is ragged-right by default; justification stays an option.
+- Letter shortcuts act only while the page or shelf has the keyboard: they no
+  longer turn pages behind an open panel or fire while typing. `Ctrl+Q` quits
+  from anywhere. Help is a proper dialog: Esc closes it and focus goes back.
+- One panel at a time: Contents, Search, Appearance, and Go To close each
+  other, Esc closes the newest, each has a close button, and focus returns to
+  what opened it. In Search, Enter on a match goes there and closes the panel.
+- The controls come up when the pointer nears the top or bottom edge or Tab
+  moves into them, stay while one has focus, and hide 2.6 s after a panel
+  closes or the pointer leaves them.
+- Panels and popups take their colors from the reading theme, the library
+  from the desktop theme; secondary text is opaque and at least 4.5:1.
+- Covers show the whole artwork instead of being cropped to one shape.
+- The window goes down to 480 px wide: the library's find field takes its own
+  row, Continue Reading shows as many cards as fit, Appearance scrolls within
+  the window, and the reader's footer labels take only their own width.
+- Messages about failures stay until dismissed; adding several books reports
+  "Added N books; M failed" with the reasons.
+- `H` highlights in the last color picked; every swatch is named.
+- The page scrubber takes the keyboard (Tab to it; arrows, Home, End).
+
+### Fixed
+
+- Cancelling a new note no longer leaves the highlight it was made on.
+- The selected cover's ring is no longer cut off at the shelf's left edge.
+
 ## [0.3.0] - 2026-10-24
 
 ### Changed
