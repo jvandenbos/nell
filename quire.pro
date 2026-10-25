@@ -7,7 +7,7 @@ TEMPLATE = app
 
 # The release version. pkgbuild/PKGBUILD and CHANGELOG.md must agree;
 # bin/check-version (run by bin/test) fails when they drift. See docs/releasing.md.
-VERSION = 0.1.0
+VERSION = 0.2.0
 DEFINES += QUIRE_VERSION=\\\"$$VERSION\\\"
 
 HEADERS += \

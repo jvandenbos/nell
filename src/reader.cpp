@@ -17,6 +17,7 @@
 #include <QPainter>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QSet>
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextDocument>
@@ -206,6 +207,7 @@ bool Reader::openBook(const QString &id) {
     const QJsonObject position = saved["position"].toObject();
     m_chapter = qBound(0, position["chapter"].toInt(), qMax(0, int(m_chapterPaths.size()) - 1));
     m_offset = qMax(0, position["offset"].toInt());
+    m_fitTextChoice = saved.contains("fitText") ? int(saved["fitText"].toBool()) : -1;
     m_undo.clear();
     m_redo.clear();
     m_pageTimer.start();
@@ -374,7 +376,58 @@ bool Reader::loadPdf(const QString &path) {
     walk(m_pdf->outline(), 0);
     for (int i = 0; i < m_pdf->numPages(); ++i)
         m_chapterPaths << QString::number(i);
+    measurePdf();
     return true;
+}
+
+// The body size is the height most of the text is set at, by characters, so
+// headings and footnotes don't sway it. Poppler's word boxes are the font's
+// full height, which is its size or a little more. Ten pages are plenty and
+// keep opening a long PDF quick.
+//
+// Running heads and feet are words near the top or bottom edge that recur in
+// the same place on most pages; digits are ignored so page numbers count.
+void Reader::measurePdf() {
+    QHash<int, qint64> characters;
+    QHash<QString, int> pagesWith;
+    const int measured = qMin(10, m_pdf->numPages());
+    const double pageHeight = measured ? m_pdf->page(0)->pageSizeF().height() : 0;
+    static const QRegularExpression digits("\\d");
+    auto key = [](const Word &word) {
+        return QString("%1:%2").arg(qRound(word.box.top())).arg(QString(word.text).remove(digits));
+    };
+    for (int page = 0; page < measured; ++page) {
+        QSet<QString> seen;
+        for (const auto &word : pdfWords(page)) {
+            characters[qRound(word.box.height() * 2)] += word.text.size();
+            if (word.box.bottom() < pageHeight * 0.15 || word.box.top() > pageHeight * 0.85)
+                seen.insert(key(word));
+        }
+        for (const auto &found : seen)
+            ++pagesWith[found];
+    }
+    int best = 0;
+    for (auto it = characters.begin(); it != characters.end(); ++it)
+        if (it.key() > 0 && (best == 0 || it.value() > characters[best]))
+            best = it.key();
+    m_pdfBodySize = best / 2.0;
+
+    m_pdfHeadEnd = m_pdfHeadCut = 0;
+    m_pdfFootStart = m_pdfFootCut = 1e9;
+    if (measured < 3)
+        return;
+    for (int page = 0; page < measured; ++page)
+        for (const auto &word : pdfWords(page)) {
+            if (pagesWith.value(key(word)) < qMax(3, measured * 6 / 10))
+                continue;
+            if (word.box.bottom() < pageHeight * 0.15) {
+                m_pdfHeadEnd = qMax(m_pdfHeadEnd, word.box.bottom());
+                m_pdfHeadCut = qMax(m_pdfHeadCut, word.box.bottom() + word.box.height() * 1.5);
+            } else if (word.box.top() > pageHeight * 0.85) {
+                m_pdfFootStart = qMin(m_pdfFootStart, word.box.top());
+                m_pdfFootCut = qMin(m_pdfFootCut, word.box.top() - word.box.height() * 1.5);
+            }
+        }
 }
 
 void Reader::close() {
@@ -393,6 +446,18 @@ void Reader::close() {
     m_pdfWordCache.clear();
     m_pdfImages.clear();
     m_pdfSearchHits.clear();
+    m_pdfContentCache.clear();
+    m_sliceCache.clear();
+    m_pdfBodySize = 0;
+    m_pdfHeadEnd = m_pdfHeadCut = 0;
+    m_pdfFootStart = m_pdfFootCut = 1e9;
+    m_fitTextChoice = -1;
+    if (m_fitText) {
+        m_fitText = false;
+        applyColumns();
+        emit fitTextChanged();
+    }
+    m_slice = 0;
     m_bookmarks = m_highlights = m_vocabulary = QJsonArray();
     m_searchResults.clear();
     m_searchChapter = m_searchStart = m_searchEnd = -1;
@@ -410,18 +475,23 @@ void Reader::close() {
 void Reader::setGeometry(double width, double height, int columns, double gap) {
     const QSizeF area(width, height);
     columns = qMax(1, columns);
-    if (area == m_area && columns == m_columns && qFuzzyCompare(gap + 1, m_gap + 1))
+    if (area == m_area && columns == m_requestedColumns && qFuzzyCompare(gap + 1, m_gap + 1))
         return;
     const bool first = m_area.isEmpty();
     m_area = area;
-    m_columns = columns;
+    m_requestedColumns = columns;
     m_gap = gap;
-    m_pageSize = QSizeF((width - gap * (columns - 1)) / columns, height);
+    applyColumns();
     // Resizing a window sends a stream of sizes; paginate once it settles.
     if (first)
         paginate();
     else
         m_layoutTimer.start();
+}
+
+void Reader::applyColumns() {
+    m_columns = m_fitText ? 1 : m_requestedColumns;
+    m_pageSize = QSizeF((m_area.width() - m_gap * (m_columns - 1)) / m_columns, m_area.height());
 }
 
 void Reader::paginate() {
@@ -441,6 +511,13 @@ void Reader::paginate() {
         m_pageStart << total;
     } else {
         m_pdfImages.clear();
+        m_sliceCache.clear();
+        const bool fit = m_fitTextChoice < 0 ? smallPrint() : m_fitTextChoice == 1;
+        if (fit != m_fitText) {
+            m_fitText = fit;
+            QMetaObject::invokeMethod(this, &Reader::fitTextChanged, Qt::QueuedConnection);
+        }
+        applyColumns();
     }
     emit layoutChanged();
     setPage(pageOf(m_chapter, m_offset), true);
@@ -512,8 +589,9 @@ void Reader::setPage(int page, bool keepPlace) {
     // when the reader tries a few sizes; a page turn moves it.
     if (!keepPlace) {
         m_chapter = chapterOfPage(page);
-        m_offset = firstPositionOnPage(page);
+        m_offset = m_fitText ? firstWordInSlice(page, 0) : firstPositionOnPage(page);
     }
+    m_slice = m_fitText && keepPlace ? sliceOf(page, m_offset) : 0;
     emit positionChanged();
     emit annotationsChanged();
     emit repaint();
@@ -524,14 +602,168 @@ void Reader::next() {
     if (!isOpen() || atEnd())
         return;
     trackReading(m_page);
+    if (m_slice + 1 < sliceCount()) {
+        setSlice(m_slice + 1);
+        return;
+    }
     setPage(m_page + m_columns, false);
 }
 
 void Reader::previous() {
-    if (!isOpen() || m_page == 0)
+    if (!isOpen() || (m_page == 0 && m_slice == 0))
         return;
     m_pageTimer.restart();
+    if (m_slice > 0) {
+        setSlice(m_slice - 1);
+        return;
+    }
     setPage(m_page - m_columns, false);
+    // Back from the top of a page lands at the foot of the one before, as
+    // scrolling up would.
+    if (m_fitText)
+        setSlice(sliceCount() - 1);
+}
+
+void Reader::setSlice(int slice) {
+    m_slice = qBound(0, slice, sliceCount() - 1);
+    m_offset = firstWordInSlice(m_page, m_slice);
+    emit positionChanged();
+    emit annotationsChanged();
+    emit repaint();
+    scheduleSave();
+}
+
+int Reader::sliceCount() const {
+    if (!m_fitText || !m_pdf || m_page >= pageCount())
+        return 1;
+    return int(sliceTops(m_page).size());
+}
+
+bool Reader::smallPrint() const {
+    return m_pdf && m_pdfBodySize > 0 && !m_area.isEmpty() && m_pdfBodySize * pageFitScale() < SmallPrintPixels;
+}
+
+void Reader::setFitText(bool fit) {
+    if (!m_pdf || fit == m_fitText)
+        return;
+    m_fitTextChoice = fit == smallPrint() ? -1 : int(fit);
+    paginate();
+    scheduleSave();
+}
+
+// How big a whole page is drawn when it fits the window. The first page
+// stands for the book, so the answer doesn't change from page to page.
+double Reader::pageFitScale() const {
+    const QSizeF points = m_pdf->page(0)->pageSizeF();
+    return qMin(m_area.width() / points.width(), m_area.height() / points.height());
+}
+
+// Body text at the reader's font size, unless the page's content would then
+// be wider than the window; and never smaller than the whole page would be.
+double Reader::fitScale(int page) const {
+    const double target = qMax(m_preferences->fontSize() / m_pdfBodySize, pageFitScale());
+    return qMin(target, m_pageSize.width() / qMax(1.0, pdfContent(page).width()));
+}
+
+// Where the ink is: a coarse render finds pictures and rules as well as text,
+// so cropping the margins never cuts into a figure.
+QRectF Reader::pdfContent(int page) const {
+    auto it = m_pdfContentCache.find(page);
+    if (it != m_pdfContentCache.end())
+        return *it;
+    const auto pdfPage = m_pdf->page(page);
+    const QRectF whole(QPointF(0, 0), pdfPage ? pdfPage->pageSizeF() : QSizeF(1, 1));
+    // Running heads and feet are left out, and so is ink beside them, but
+    // never so far that a word of the page's own text is lost.
+    QList<Word> body;
+    for (const auto &word : pdfWords(page))
+        if (word.box.top() >= m_pdfHeadEnd && word.box.bottom() <= m_pdfFootStart)
+            body << word;
+    double from = m_pdfHeadCut, to = m_pdfFootCut;
+    for (const auto &word : body) {
+        from = qMin(from, word.box.top() - 2);
+        to = qMax(to, word.box.bottom() + 2);
+    }
+    QRectF content;
+    constexpr double Dpi = 24;
+    const QImage image = pdfPage ? pdfPage->renderToImage(Dpi, Dpi).convertToFormat(QImage::Format_RGB32) : QImage();
+    int left = image.width(), top = image.height(), right = -1, bottom = -1;
+    for (int y = qMax(0, int(std::ceil(from * Dpi / 72))); y < qMin(image.height(), int(to * Dpi / 72)); ++y) {
+        const QRgb *line = reinterpret_cast<const QRgb *>(image.constScanLine(y));
+        for (int x = 0; x < image.width(); ++x)
+            if (qRed(line[x]) < 235 || qGreen(line[x]) < 235 || qBlue(line[x]) < 235) {
+                left = qMin(left, x);
+                right = qMax(right, x);
+                top = qMin(top, y);
+                bottom = qMax(bottom, y);
+            }
+    }
+    if (right >= 0)
+        content = QRectF(left, top, right - left + 1, bottom - top + 1).adjusted(-1, -1, 1, 1);
+    content = QRectF(content.topLeft() * 72 / Dpi, content.size() * 72 / Dpi);
+    for (const auto &word : body)
+        content = content.isNull() ? word.box : content.united(word.box);
+    content = content.isNull() ? whole : content.adjusted(-6, -6, 6, 6).intersected(whole);
+    return *m_pdfContentCache.insert(page, content);
+}
+
+// The top of each screenful of a page, in points. A slice ends above any line
+// it would cut through, so every line is read whole, once.
+const QList<double> &Reader::sliceTops(int page) const {
+    auto it = m_sliceCache.find(page);
+    if (it != m_sliceCache.end())
+        return *it;
+    const QRectF content = pdfContent(page);
+    const double height = m_pageSize.height() / fitScale(page);
+    const auto &words = pdfWords(page);
+    QList<double> tops{content.top()};
+    double top = content.top();
+    while (height > 1 && top + height < content.bottom()) {
+        double bottom = top + height;
+        for (bool moved = true; moved;) {
+            moved = false;
+            for (const auto &word : words) {
+                // Accents and ascenders reach a little above the box Poppler gives.
+                const double above = word.box.top() - word.box.height() / 4;
+                if (above < bottom - 0.01 && word.box.bottom() > bottom + 0.01 && above > top + height / 4) {
+                    bottom = above;
+                    moved = true;
+                }
+            }
+        }
+        tops << bottom;
+        top = bottom;
+    }
+    return *m_sliceCache.insert(page, tops);
+}
+
+QPair<double, double> Reader::sliceSpan(int page, int slice) const {
+    const auto &tops = sliceTops(page);
+    slice = qBound(0, slice, int(tops.size()) - 1);
+    return {tops[slice], slice + 1 < tops.size() ? tops[slice + 1] : pdfContent(page).bottom()};
+}
+
+int Reader::sliceOf(int page, int word) const {
+    const auto &words = pdfWords(page);
+    if (word < 0 || word >= words.size())
+        return 0;
+    const double y = words[word].box.center().y();
+    const auto &tops = sliceTops(page);
+    int slice = 0;
+    while (slice + 1 < tops.size() && tops[slice + 1] <= y)
+        ++slice;
+    return slice;
+}
+
+int Reader::firstWordInSlice(int page, int slice) const {
+    const auto span = sliceSpan(page, slice);
+    const auto &words = pdfWords(page);
+    for (int i = 0; i < words.size(); ++i) {
+        const double y = words[i].box.center().y();
+        if (y >= span.first && y < span.second)
+            return i;
+    }
+    return 0;
 }
 
 void Reader::goToPage(int page) {
@@ -539,6 +771,12 @@ void Reader::goToPage(int page) {
         return;
     m_pageTimer.restart();
     setPage(page, false);
+}
+
+void Reader::goToEnd() {
+    goToPage(pageCount() - 1);
+    if (m_fitText)
+        setSlice(sliceCount() - 1);
 }
 
 void Reader::goToFraction(double fraction) {
@@ -585,7 +823,7 @@ QString Reader::follow(const QString &target) {
     return {};
 }
 
-bool Reader::atEnd() const { return m_page + m_columns >= pageCount(); }
+bool Reader::atEnd() const { return m_page + m_columns >= pageCount() && m_slice + 1 >= sliceCount(); }
 
 int Reader::viewEnd() const {
     const int next = m_page + m_columns;
@@ -609,8 +847,10 @@ double Reader::progress() const {
     // and reporting 0% then would overwrite the saved progress.
     if (pageCount() > 0 && atEnd())
         return 1;
-    if (m_pdf)
-        return pageCount() ? double(m_page + m_columns) / pageCount() : 0;
+    if (m_pdf) {
+        const double shown = m_fitText ? double(m_slice + 1) / sliceCount() : m_columns;
+        return pageCount() ? (m_page + shown) / pageCount() : 0;
+    }
     return m_characterCount ? double(globalOffset(m_chapter, m_offset)) / m_characterCount : 0;
 }
 
@@ -696,7 +936,13 @@ int Reader::locationCount() const {
 void Reader::trackReading(int fromPage) {
     const double seconds = m_pageTimer.restart() / 1000.0;
     qint64 characters = 0;
-    if (m_pdf) {
+    if (m_pdf && m_fitText) {
+        // A slice is part of a page, so it says nothing about a page's length.
+        const auto span = sliceSpan(fromPage, m_slice);
+        for (const auto &word : pdfWords(fromPage))
+            if (word.box.center().y() >= span.first && word.box.center().y() < span.second)
+                characters += word.text.size() + 1;
+    } else if (m_pdf) {
         for (int page = fromPage; page < viewEnd(); ++page)
             for (const auto &word : pdfWords(page))
                 characters += word.text.size() + 1;
@@ -804,6 +1050,15 @@ QTransform Reader::pdfTransform(int column) const {
     const int page = m_page + column;
     const QSizeF points = m_pdf->page(page)->pageSizeF();
     const QRectF rect = columnRect(column);
+    if (m_fitText) {
+        const double scale = fitScale(page);
+        const QRectF content = pdfContent(page);
+        QTransform transform;
+        transform.translate(rect.x() + (rect.width() - content.width() * scale) / 2 - content.left() * scale,
+                            rect.y() - sliceSpan(page, m_slice).first * scale);
+        transform.scale(scale, scale);
+        return transform;
+    }
     const double scale = qMin(rect.width() / points.width(), rect.height() / points.height());
     const QSizeF size = points * scale;
     // A spread meets in the middle, like an open book; a single page centers.
@@ -843,12 +1098,20 @@ void Reader::paintPdf(QPainter *painter, int column) {
     const QSizeF points = m_pdf->page(page)->pageSizeF();
     const QRectF target = transform.mapRect(QRectF(QPointF(0, 0), points));
     const qreal ratio = painter->device() ? painter->device()->devicePixelRatioF() : 1.0;
+    painter->save();
+    // In fit text only this slice shows: the next one starts with the line
+    // this one stopped above.
+    QRectF clip = columnRect(column);
+    if (m_fitText) {
+        const auto span = sliceSpan(page, m_slice);
+        clip.setHeight(qMin(clip.height(), (span.second - span.first) * transform.m22()));
+    }
+    painter->setClipRect(clip);
     const QImage image = pdfImage(page, (target.size() * ratio).toSize(), ratio);
     if (!image.isNull())
         painter->drawImage(target, image);
 
     const bool dark = m_preferences->darkPage();
-    painter->save();
     painter->setCompositionMode(dark ? QPainter::CompositionMode_Screen : QPainter::CompositionMode_Multiply);
     for (const auto &value : m_highlights) {
         const auto highlight = value.toObject();
@@ -914,10 +1177,14 @@ int Reader::positionAt(int column, const QPointF &point) const {
     if (m_pdf) {
         const QPointF local = pdfTransform(column).inverted().map(point);
         const auto &words = pdfWords(page);
+        // In fit text only this slice's words can be pointed at.
+        const auto span = m_fitText ? sliceSpan(page, m_slice) : QPair<double, double>(-1e9, 1e9);
         int best = -1;
         double bestDistance = 1e9;
         for (int i = 0; i < words.size(); ++i) {
             const QRectF box = words[i].box;
+            if (box.center().y() < span.first || box.center().y() >= span.second)
+                continue;
             const double dx = qMax(0.0, qMax(box.left() - local.x(), local.x() - box.right()));
             // Lines are close together, so missing vertically costs more.
             const double dy = qMax(0.0, qMax(box.top() - local.y(), local.y() - box.bottom())) * 3;
@@ -1232,7 +1499,7 @@ void Reader::goToHighlight(const QString &id) {
     for (const auto &value : m_highlights) {
         const auto highlight = value.toObject();
         if (highlight["id"] == id) {
-            goTo(highlight["chapter"].toInt(), m_pdf ? 0 : highlight["start"].toInt());
+            goTo(highlight["chapter"].toInt(), highlight["start"].toInt());
             return;
         }
     }
@@ -1428,7 +1695,16 @@ void Reader::goToResult(int index) {
         if (!m_searchResults.isEmpty())
             m_pdfSearchHits[chapter] = m_pdf->page(chapter)->search(result["match"].toString(),
                                                                     Poppler::Page::IgnoreCase);
-        goToPage(chapter);
+        // The word the hit starts on, so fit text opens the slice that shows it.
+        int word = 0;
+        const auto hits = m_pdfSearchHits.value(chapter);
+        const auto &words = pdfWords(chapter);
+        for (int i = 0; !hits.isEmpty() && i < words.size(); ++i)
+            if (words[i].box.intersects(hits.first())) {
+                word = i;
+                break;
+            }
+        goTo(chapter, word);
         return;
     }
     m_searchChapter = chapter;
@@ -1457,10 +1733,13 @@ void Reader::save() {
     if (!isOpen() || m_readOnly)
         return;
     const int chapter = m_pdf ? m_page : m_chapter;
-    m_library->saveAnnotations(m_id, QJsonObject{{"position", QJsonObject{{"chapter", chapter}, {"offset", m_offset}}},
-                                                 {"bookmarks", m_bookmarks},
-                                                 {"highlights", m_highlights},
-                                                 {"vocabulary", m_vocabulary}});
+    QJsonObject annotations{{"position", QJsonObject{{"chapter", chapter}, {"offset", m_offset}}},
+                            {"bookmarks", m_bookmarks},
+                            {"highlights", m_highlights},
+                            {"vocabulary", m_vocabulary}};
+    if (m_fitTextChoice >= 0)
+        annotations["fitText"] = m_fitTextChoice == 1;
+    m_library->saveAnnotations(m_id, annotations);
     m_library->touch(m_id, progress());
 }
 

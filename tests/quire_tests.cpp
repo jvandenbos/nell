@@ -327,6 +327,124 @@ private slots:
         QVERIFY(inked > 100);
     }
 
+    void smallPrintPdfsFitTextToSize()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/quire.conf");
+        const QString small = library.add(makeTextPdf(dir.path() + "/small.pdf", 7, 2));
+        const QString large = library.add(makeTextPdf(dir.path() + "/large.pdf", 20, 2));
+        QVERIFY2(!small.isEmpty() && !large.isEmpty(), qPrintable(library.error()));
+        Reader reader(&library, &preferences);
+
+        // The same landscape window: one book is small print in it, the other isn't.
+        QVERIFY(reader.openBook(large));
+        reader.setGeometry(1200, 650, 1, 0);
+        // Poppler's word boxes are the font's full height: the size, or a little more.
+        QVERIFY2(reader.bodySize() >= 20 && reader.bodySize() <= 25, qPrintable(QString::number(reader.bodySize())));
+        QVERIFY(!reader.smallPrint());
+        QVERIFY(!reader.fitText());
+        QCOMPARE(reader.sliceCount(), 1);
+
+        QVERIFY(reader.openBook(small));
+        reader.setGeometry(1200, 650, 1, 0);
+        QVERIFY2(reader.bodySize() >= 7 && reader.bodySize() <= 9, qPrintable(QString::number(reader.bodySize())));
+        QVERIFY(reader.smallPrint());
+        QVERIFY(reader.fitText());
+        const int slices = reader.sliceCount();
+        QVERIFY2(slices >= 3, qPrintable(QString::number(slices)));
+
+        // Turning moves down the page first, then on to the next page, and
+        // back from the top of a page lands at the foot of the one before.
+        reader.next();
+        QCOMPARE(reader.page(), 0);
+        QCOMPARE(reader.slice(), 1);
+        for (int i = 1; i < slices; ++i)
+            reader.next();
+        QCOMPARE(reader.page(), 1);
+        QCOMPARE(reader.slice(), 0);
+        reader.previous();
+        QCOMPARE(reader.page(), 0);
+        QCOMPARE(reader.slice(), slices - 1);
+        QVERIFY(!reader.atEnd());
+        reader.goToEnd();
+        QCOMPARE(reader.page(), 1);
+        QCOMPARE(reader.slice(), slices - 1);
+        QVERIFY(reader.atEnd());
+
+        // Each slice shows text, and the zoom makes it the reader's size:
+        // a line of 7 pt text at 20 px is about three times as tall.
+        reader.goToPage(0);
+        reader.next();
+        QImage image(1200, 650, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::white);
+        QPainter painter(&image);
+        reader.paint(&painter, image.size());
+        painter.end();
+        int inked = 0;
+        for (int y = 0; y < image.height(); ++y)
+            for (int x = 0; x < image.width(); ++x)
+                inked += image.pixelColor(x, y) != QColor(Qt::white);
+        QVERIFY(inked > 1000);
+
+        // The place is the slice, kept when the book is opened again.
+        reader.next();
+        QCOMPARE(reader.slice(), 2);
+        reader.close();
+        QVERIFY(reader.openBook(small));
+        reader.setGeometry(1200, 650, 1, 0);
+        QCOMPARE(reader.page(), 0);
+        QCOMPARE(reader.slice(), 2);
+
+        // Bigger text means more slices.
+        preferences.setFontSize(30);
+        QVERIFY(reader.sliceCount() > slices);
+        preferences.setFontSize(20);
+
+        // Turning it off is remembered for the book; turning it back on
+        // follows detection again.
+        reader.setFitText(false);
+        QVERIFY(!reader.fitText());
+        QCOMPARE(reader.sliceCount(), 1);
+        reader.close();
+        QVERIFY(!library.annotations(small)["fitText"].toBool(true));
+        QVERIFY(reader.openBook(small));
+        reader.setGeometry(1200, 650, 1, 0);
+        QVERIFY(!reader.fitText());
+        reader.setFitText(true);
+        QVERIFY(reader.fitText());
+        reader.close();
+        QVERIFY(!library.annotations(small).contains("fitText"));
+    }
+
+    void fitTextLeavesOutRunningHeadsAndFeet()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/quire.conf");
+        const QString id = library.add(makeTextPdf(dir.path() + "/guide.pdf", 7, 4, true));
+        QVERIFY2(!id.isEmpty(), qPrintable(library.error()));
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(id));
+        reader.setGeometry(1200, 650, 1, 0);
+        QVERIFY(reader.fitText());
+
+        // The word nearest the left of the view's top or bottom edge, where the
+        // running head ("Study guide") and foot ("Page 1") start.
+        auto wordAt = [&](double y) {
+            const int word = reader.positionAt(0, QPointF(0, y));
+            reader.select(0, word, word);
+            const QString text = reader.selectionText();
+            reader.clearSelection();
+            return text;
+        };
+        QCOMPARE(wordAt(0), QString("Line"));
+        while (reader.page() == 0 && !reader.atEnd() && reader.slice() + 1 < reader.sliceCount())
+            reader.next();
+        QCOMPARE(reader.page(), 0);
+        QCOMPARE(wordAt(649), QString("Line"));
+    }
+
     void readingSpeedIsLearnedSlowly()
     {
         QTemporaryDir dir;
@@ -430,6 +548,33 @@ private:
         if (!zip.waitForFinished() || zip.exitCode() != 0)
             qFatal("bsdtar failed: %s", zip.readAllStandardError().constData());
         return book;
+    }
+
+    // A4 pages filled top to bottom with lines of text at one size; with
+    // running, the text keeps to the middle under a running head and above
+    // a numbered running foot.
+    static QString makeTextPdf(const QString &path, int pointSize, int pages, bool running = false)
+    {
+        QPdfWriter writer(path);
+        writer.setTitle(QString());
+        writer.setPageSize(QPageSize(QPageSize::A4));
+        QPainter painter(&writer);
+        painter.setFont(QFont("sans", pointSize));
+        const double line = writer.resolution() * pointSize * 1.4 / 72;
+        for (int page = 0; page < pages; ++page) {
+            if (page > 0)
+                writer.newPage();
+            const double top = running ? writer.height() * 0.16 : line * 2;
+            const double bottom = running ? writer.height() * 0.84 : writer.height() - line;
+            for (double y = top; y < bottom; y += line)
+                painter.drawText(QPointF(line, y), QString("Line at %1 of page %2 with a few more words").arg(int(y)).arg(page + 1));
+            if (running) {
+                painter.drawText(QPointF(line, writer.height() * 0.05), "Study guide");
+                painter.drawText(QPointF(line, writer.height() * 0.97), QString("Page %1").arg(page + 1));
+            }
+        }
+        painter.end();
+        return path;
     }
 
     static QString makePdf(const QString &path, int pages)

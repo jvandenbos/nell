@@ -17,6 +17,11 @@ looked up, and your highlights and notes exportable as Markdown.
   room. Themes (Original, Paper, Calm, Quiet, Night, and Omarchy, which follows
   your desktop theme), typeface, size, line spacing, margins, and justification.
   Dark themes show PDFs inverted.
+- **Small print.** A PDF whose text would be tiny in the window switches to fit
+  text: the page is zoomed until its body text matches your text size, then
+  read one screenful at a time. Running headers and footers are dropped, and
+  no line is ever cut in half. `Ctrl++` and `Ctrl+−` change the zoom; Appearance
+  turns it off for that book.
 - **Marking.** Select text to highlight it in five colors or underline it, add a
   note, copy it, look it up in Wiktionary, or search for it. Bookmark pages.
   Everything undoes.

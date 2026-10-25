@@ -45,6 +45,27 @@ any change of font or window size, which page numbers don't. In a PDF, `chapter`
 is the page and `offset` is a word on it. Page numbers are worked out from
 these pairs on every pagination and are never stored.
 
+## Fit text
+
+A PDF counts as small print when its body text, which is the height most of
+its characters are set at, would be drawn under `Reader::SmallPrintPixels`
+(12.5 px) with the page fitted to the window. That is smaller than the
+smallest size an EPUB can be set to. For such a book the Reader:
+
+- zooms each page until the body text is the reader's font size, capped so the
+  page's content still fits the window's width, and uses one column;
+- crops the page to its content: the ink found by a 24 dpi render plus the word
+  boxes, minus running heads and feet (words near the top or bottom edge that
+  recur in the same place on most of the first ten pages, ignoring digits);
+- cuts the page into slices one view high, moving each cut up above any line
+  it would go through, so no line is shown in halves and none is skipped.
+
+`m_page` stays the PDF page and `m_slice` picks the slice, so the rest of the
+reader still counts pages as it always has. The saved place is the first word
+of the slice, which finds the right slice again after the window or text size
+changes. A choice made with the Appearance switch is saved with the book as
+`fitText` and only when it differs from what detection would pick.
+
 ## Borrowed code
 
 The theme watcher, the translator, and the portal file chooser follow the

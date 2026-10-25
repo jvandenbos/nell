@@ -6,8 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-24
+
 ### Added
 
+- Fit text for small-print PDFs. A PDF whose text would be too small to read
+  is zoomed to the reader's text size and read a screen at a time, with
+  running heads and feet left out and no line split between screens. It turns
+  on by itself and can be turned off per book in Appearance.
+- `End` goes to the foot of the last page in fit text.
 - Architecture, file-format, and release docs under `docs/`.
 - `bin/check-version`, run by `bin/test`: fails when `quire.pro`, the PKGBUILD,
   and this changelog disagree on the version.
@@ -33,5 +40,6 @@ All notable changes to this project are documented here. The format follows
 - `quire list`, `add`, `info`, `notes`, and `skill` commands for scripts and agents.
 - Danish, Dutch, French, German, and Spanish translations.
 
-[Unreleased]: https://github.com/jvandenbos/quire/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jvandenbos/quire/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/jvandenbos/quire/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/jvandenbos/quire/releases/tag/v0.1.0

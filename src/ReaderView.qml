@@ -18,11 +18,14 @@ Item {
                                       || selectionMenu.opened || noteEditor.opened || definition.opened
 
     // Two pages side by side when the window is wide enough to hold them.
+    // (Fit text uses one, decided by the reader: a PDF's columns span the
+    // same width either way.)
     readonly property int columns: prefs.spread && width >= 1000 && width > height * 1.2 && !(pdf && reader.pageCount < 2) ? 2 : 1
     readonly property real sideMargin: pdf ? 28 : [0.03, 0.07, 0.12][prefs.margins] * width + 28
     readonly property real gap: pdf ? 12 : Math.max(64, sideMargin)
-    readonly property real topMargin: pdf ? 48 : 72
-    readonly property real bottomMargin: pdf ? 48 : 72
+    // Fit text runs a page edge to edge, so it keeps clear of the bars like a book.
+    readonly property real topMargin: pdf && !reader.fitText ? 48 : 72
+    readonly property real bottomMargin: pdf && !reader.fitText ? 48 : 72
     // A comfortable line is about 65 characters; past that the eye loses its place.
     readonly property real maxColumn: pdf ? 1e6 : prefs.fontSize * 34
     readonly property real columnWidth: Math.min(maxColumn, (width - 2 * sideMargin - gap * (columns - 1)) / columns)
@@ -137,12 +140,12 @@ Item {
     Shortcut { context: Qt.ApplicationShortcut; sequence: "]"; enabled: view.keysFree; onActivated: reader.goToChapterStart(1) }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "["; enabled: view.keysFree; onActivated: reader.goToChapterStart(-1) }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "Home"; enabled: view.keysFree; onActivated: reader.goToPage(0) }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "End"; enabled: view.keysFree; onActivated: reader.goToPage(reader.pageCount - 1) }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "End"; enabled: view.keysFree; onActivated: reader.goToEnd() }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "T"; enabled: view.keysFree; onActivated: contents.opened ? contents.close() : contents.open() }
     Shortcut { context: Qt.ApplicationShortcut; sequences: ["/", StandardKey.Find]; enabled: !noteEditor.opened; onActivated: searchPanel.open() }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "A"; enabled: view.keysFree; onActivated: appearance.opened ? appearance.close() : appearance.open() }
-    Shortcut { context: Qt.ApplicationShortcut; sequences: ["Ctrl+=", "Ctrl++"]; enabled: !view.pdf; onActivated: prefs.fontSize += 1 }
-    Shortcut { context: Qt.ApplicationShortcut; sequences: ["Ctrl+-"]; enabled: !view.pdf; onActivated: prefs.fontSize -= 1 }
+    Shortcut { context: Qt.ApplicationShortcut; sequences: ["Ctrl+=", "Ctrl++"]; enabled: !view.pdf || reader.fitText; onActivated: prefs.fontSize += 1 }
+    Shortcut { context: Qt.ApplicationShortcut; sequences: ["Ctrl+-"]; enabled: !view.pdf || reader.fitText; onActivated: prefs.fontSize -= 1 }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "B"; enabled: view.keysFree; onActivated: reader.toggleBookmark() }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "H"; enabled: view.keysFree && reader.hasSelection; onActivated: view.highlightSelection("yellow") }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "N"; enabled: view.keysFree && reader.hasSelection; onActivated: view.noteSelection() }

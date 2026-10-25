@@ -32,9 +32,9 @@ Popup {
     contentItem: ColumnLayout {
         spacing: 16
 
-        // Size
+        // Size: in a PDF it's the size fit text zooms the body text to.
         RowLayout {
-            visible: !panel.pdf
+            visible: !panel.pdf || reader.fitText
             Layout.fillWidth: true
             spacing: 8
             Button {
@@ -167,6 +167,14 @@ Popup {
             onToggled: prefs.justify = checked
         }
         Switch {
+            visible: panel.pdf
+            Layout.fillWidth: true
+            text: qsTr("Fit text to size")
+            checked: reader.fitText
+            onToggled: reader.fitText = checked
+        }
+        Switch {
+            visible: !reader.fitText
             Layout.fillWidth: true
             text: qsTr("Two pages when there’s room")
             checked: prefs.spread

@@ -31,6 +31,11 @@ namespace Poppler { class Document; }
 // change of font or window size; in a PDF the chapter is the page and the
 // offset a word on it. Pages are counted across the whole book, and the view
 // shows `columns` of them side by side, starting at `page`.
+//
+// A PDF set in small print (most of its words under SmallPrintPixels when the
+// page fits the window) is read with fit text instead: the page is zoomed
+// until its body text is the reader's font size and shown one screen-high
+// slice at a time, so a page turn moves down the page before it moves on.
 class Reader : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool open READ isOpen NOTIFY openChanged)
@@ -63,9 +68,16 @@ class Reader : public QObject {
     Q_PROPERTY(QString selectionText READ selectionText NOTIFY selectionChanged)
     Q_PROPERTY(QString selectedHighlight READ selectedHighlight NOTIFY selectionChanged)
     Q_PROPERTY(QVariantList searchResults READ searchResults NOTIFY searchChanged)
+    Q_PROPERTY(bool smallPrint READ smallPrint NOTIFY layoutChanged)
+    Q_PROPERTY(bool fitText READ fitText WRITE setFitText NOTIFY fitTextChanged)
+    Q_PROPERTY(int slice READ slice NOTIFY positionChanged)
+    Q_PROPERTY(int sliceCount READ sliceCount NOTIFY positionChanged)
 
 public:
     static constexpr int CharactersPerLocation = 150;
+    // Body text smaller than this on screen is small print: just over 12 px,
+    // the smallest size a book's text can be set to.
+    static constexpr double SmallPrintPixels = 12.5;
 
     Reader(Library *library, Preferences *preferences, QObject *parent = nullptr);
     ~Reader() override;
@@ -82,6 +94,8 @@ public:
     Q_INVOKABLE void next();
     Q_INVOKABLE void previous();
     Q_INVOKABLE void goToPage(int page);
+    // The last page, and in fit text the foot of it.
+    Q_INVOKABLE void goToEnd();
     Q_INVOKABLE void goToFraction(double fraction);
     Q_INVOKABLE void goToToc(int index);
     Q_INVOKABLE void goToChapterStart(int direction);
@@ -151,6 +165,17 @@ public:
     QString selectionText() const;
     QString selectedHighlight() const { return m_selectedHighlight; }
     QVariantList searchResults() const { return m_searchResults; }
+    bool smallPrint() const;
+    bool fitText() const { return m_fitText; }
+    // The reader's choice for this book, kept with its notes; choosing what
+    // detection would pick anyway goes back to following detection.
+    void setFitText(bool fit);
+    int slice() const { return m_slice; }
+    int sliceCount() const;
+    // The height most of a PDF's words are set at, in points: the font size,
+    // or up to an eighth more for fonts with tall ascenders. 0 for an EPUB or
+    // a PDF without text.
+    double bodySize() const { return m_pdfBodySize; }
 
     // A place as one number across the whole book, for progress and time.
     qint64 globalOffset(int chapter, int offset) const;
@@ -159,6 +184,9 @@ signals:
     void openChanged();
     void errorChanged();
     void layoutChanged();
+    // Queued: the view's layout depends on it, and it changes while the
+    // view is still applying a new size.
+    void fitTextChanged();
     void positionChanged();
     void annotationsChanged();
     void selectionChanged();
@@ -185,6 +213,16 @@ private:
     void styleChapters();
     void paginate();
     void setPage(int page, bool keepPlace);
+    void setSlice(int slice);
+    void applyColumns();
+    void measurePdf();
+    double pageFitScale() const;
+    double fitScale(int page) const;
+    QRectF pdfContent(int page) const;
+    const QList<double> &sliceTops(int page) const;
+    QPair<double, double> sliceSpan(int page, int slice) const;
+    int sliceOf(int page, int word) const;
+    int firstWordInSlice(int page, int slice) const;
     int chapterOfPage(int page) const;
     int pageOf(int chapter, int offset) const;
     int firstPositionOnPage(int page) const;
@@ -227,11 +265,23 @@ private:
     mutable QCache<QString, QImage> m_pdfImages;
     double m_pdfCharactersPerPage = 1800;
     QHash<int, QList<QRectF>> m_pdfSearchHits;
+    double m_pdfBodySize = 0;
+    // Running heads and feet, in points from the top of the page: text above
+    // m_pdfHeadEnd or below m_pdfFootStart repeats on most pages, and ink
+    // between those and the cuts (a rule under a heading) goes with it.
+    double m_pdfHeadEnd = 0, m_pdfHeadCut = 0;
+    double m_pdfFootStart = 1e9, m_pdfFootCut = 1e9;
+    mutable QHash<int, QRectF> m_pdfContentCache;
+    mutable QHash<int, QList<double>> m_sliceCache;
+    int m_fitTextChoice = -1;  // -1 follows detection, 0 off, 1 on
+    bool m_fitText = false;
+    int m_slice = 0;
 
     QList<TocTarget> m_toc;
     QSizeF m_area;
     QSizeF m_pageSize;
     int m_columns = 1;
+    int m_requestedColumns = 1;  // what the view asked for; fit text uses one
     double m_gap = 0;
 
     int m_page = 0;

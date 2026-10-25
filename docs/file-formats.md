@@ -52,12 +52,16 @@ Timestamps are ISO 8601 strings in UTC (`2026-10-23T13:55:02Z`).
       "text": "Then you should say what you mean,", "color": "yellow",
       "note": "", "created": "…" }
   ],
+  "fitText": false,
   "vocabulary": [
     { "word": "treacle", "definition": "…", "context": "…the sentence…",
       "chapter": 6, "offset": 812, "created": "…" }
   ]
 }
 ```
+
+`fitText`, when present, is the reader's choice in Appearance for this PDF
+and overrides small-print detection. It's left out while detection decides.
 
 `chapter` and `offset` mean what they mean in the reader (see
 [architecture.md](architecture.md#places-in-a-book)). `color` is `yellow`, `green`, `blue`, `pink`,
