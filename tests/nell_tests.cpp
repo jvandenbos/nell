@@ -709,6 +709,55 @@ private slots:
         QCOMPARE(library.annotations(id).object["highlights"].toArray()[0].toObject()["color"].toString(), QString("pink"));
     }
 
+    void lookedUpWordsUndo()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(library.add(makeEpub(dir.path()))));
+        reader.setGeometry(400, 500, 1, 0);
+        reader.select(0, 2, 9);
+        reader.addWord("Chapter", "A division.");
+        QCOMPARE(reader.vocabulary().size(), 1);
+        QVERIFY(reader.canUndo());
+        reader.undo();
+        QVERIFY(reader.vocabulary().isEmpty());
+        reader.redo();
+        QCOMPARE(reader.vocabulary().size(), 1);
+    }
+
+    void originalThemeKeepsThePublishersColors()
+    {
+        // The test book's stylesheet sets paragraphs in red.
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(library.add(makeEpub(dir.path()))));
+        reader.setGeometry(400, 500, 1, 0);
+        auto redPixels = [&] {
+            QImage image(400, 500, QImage::Format_ARGB32_Premultiplied);
+            image.fill(QColor(preferences.pageColor()));
+            QPainter painter(&image);
+            reader.paint(&painter, image.size());
+            painter.end();
+            int red = 0;
+            for (int y = 0; y < image.height(); ++y)
+                for (int x = 0; x < image.width(); ++x) {
+                    const QColor color = image.pixelColor(x, y);
+                    red += color.red() > 150 && color.green() < 90 && color.blue() < 90;
+                }
+            return red;
+        };
+        QCOMPARE(preferences.readingTheme(), QString("original"));
+        QVERIFY(redPixels() > 100);
+        preferences.setReadingTheme("paper");
+        QCOMPARE(redPixels(), 0);
+        preferences.setReadingTheme("original");
+        QVERIFY(redPixels() > 100);
+    }
+
     void damagedOrNewerNotesAreNeverOverwritten()
     {
         QTemporaryDir dir;
@@ -1209,7 +1258,7 @@ private:
                       "nothing to do: once or twice she had peeped into the book her sister was reading.</p>\n";
         auto chapter = [&](const QByteArray &title, const QByteArray &middle) {
             return "<?xml version=\"1.0\"?>\n<html xmlns=\"http://www.w3.org/1999/xhtml\"><head>"
-                   "<link rel=\"stylesheet\" href=\"../style.css\"/></head><body><h1>" + title + "</h1>" +
+                   "<link rel=\"stylesheet\" type=\"text/css\" href=\"../style.css\"/></head><body><h1>" + title + "</h1>" +
                    filler + middle + filler + "</body></html>";
         };
         write(root + "/OEBPS/text/one.xhtml", chapter("Chapter One", "<p>A jar of ORANGE MARMALADE.</p>"));

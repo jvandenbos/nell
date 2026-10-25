@@ -62,6 +62,9 @@ All notable changes to this project are documented here. The format follows
 - Dragging a selection across a two-page spread into the next chapter stops at
   the chapter's edge instead of selecting from the wrong place.
 - Time left in a PDF in fit text counts the rest of the page in view.
+- Saving a looked-up word can be undone, like every other mark.
+- The Original theme keeps an EPUB's own text and background colors instead
+  of replacing them; the other themes still use their own.
 
 ## [0.3.0] - 2026-10-24
 

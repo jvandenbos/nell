@@ -29,12 +29,13 @@
 #include <poppler-qt6.h>
 
 // A chapter of an EPUB as Qt's rich text document. It reads stylesheets
-// itself, so the reader's font, size and colors win over the publisher's,
+// itself, so the reader's font, size and colors win over the publisher's
+// (colors only in a theme other than Original, which keeps the book's own),
 // and never loads anything from outside the unpacked book.
 class BookDocument : public QTextDocument {
 public:
-    BookDocument(const QString &path, const QString &root, bool keepFonts)
-        : m_root(root), m_keepFonts(keepFonts) {
+    BookDocument(const QString &path, const QString &root, bool keepFonts, bool keepColors)
+        : m_root(root), m_keepFonts(keepFonts), m_keepColors(keepColors) {
         setBaseUrl(QUrl::fromLocalFile(path));
         setDocumentMargin(0);
         setUndoRedoEnabled(false);
@@ -56,13 +57,18 @@ protected:
         if (file.fileName().isEmpty() || !file.open(QIODevice::ReadOnly))
             return QString();
         QString css = QString::fromUtf8(file.readAll());
-        // Line spacing and colors are always the reader's. Typefaces and
-        // fixed type sizes are too, unless they chose the publisher's font.
-        static const QRegularExpression always(R"((?<![-\w])(line-height|color|background(-color|-image)?)\s*:[^;}]*;?)",
+        // Line spacing is always the reader's, and so are colors, except in
+        // the Original theme. Typefaces and fixed type sizes are too, unless
+        // they chose the publisher's font.
+        static const QRegularExpression always(R"((?<![-\w])line-height\s*:[^;}]*;?)",
+                                               QRegularExpression::CaseInsensitiveOption);
+        static const QRegularExpression colors(R"((?<![-\w])(color|background(-color|-image)?)\s*:[^;}]*;?)",
                                                QRegularExpression::CaseInsensitiveOption);
         static const QRegularExpression fonts(R"((?<![-\w])(font-family|font-size\s*:\s*[\d.]+\s*(px|pt)|font-size\s*:\s*(x+-)?(small|medium|large))\s*[^;}]*;?)",
                                               QRegularExpression::CaseInsensitiveOption);
         css.remove(always);
+        if (!m_keepColors)
+            css.remove(colors);
         if (!m_keepFonts)
             css.remove(fonts);
         return css;
@@ -71,6 +77,7 @@ protected:
 private:
     QString m_root;
     bool m_keepFonts;
+    bool m_keepColors;
 };
 
 class ImageHandler : public QObject, public QTextObjectInterface {
@@ -164,6 +171,13 @@ Reader::Reader(Library *library, Preferences *preferences, QObject *parent)
     });
     connect(m_preferences, &Preferences::colorsChanged, this, [this] {
         m_pdfImages.clear();
+        // Into or out of Original, the publisher's colors come or go, which
+        // means reading the chapters again.
+        if (isOpen() && m_format == QLatin1String("epub") && m_keepColors != keepColors()) {
+            loadChapters();
+            styleChapters();
+            paginate();
+        }
         emit repaint();
     });
 }
@@ -279,26 +293,28 @@ bool Reader::loadEpub(const QString &directory, const QString &digest) {
 
 void Reader::loadChapters() {
     m_keepFonts = m_preferences->fontFamily().isEmpty();
+    m_keepColors = keepColors();
     m_chapters.clear();
     m_anchors.clear();
     m_charactersBefore.clear();
     m_characterCount = 0;
     m_bookImages.clear();
     for (const auto &path : m_chapterPaths) {
-        auto document = std::make_unique<BookDocument>(path, m_root, m_keepFonts);
+        auto document = std::make_unique<BookDocument>(path, m_root, m_keepFonts, m_keepColors);
         document->documentLayout()->registerHandler(QTextFormat::ImageObject, m_imageHandler);
         QFile file(path);
         if (file.open(QIODevice::ReadOnly))
             document->setHtml(prepareHtml(QString::fromUtf8(file.readAll())));
 
-        // Colors belong to the reading theme, so drop the publisher's, and
-        // collect every anchor a link or the table of contents can point at.
+        // Colors belong to the reading theme, so drop the publisher's unless
+        // it's Original, and collect every anchor a link or the table of
+        // contents can point at.
         QHash<QString, int> anchors;
         QTextCursor cursor(document.get());
         cursor.beginEditBlock();
         for (QTextBlock block = document->begin(); block.isValid(); block = block.next()) {
             QTextBlockFormat blockFormat = block.blockFormat();
-            if (blockFormat.hasProperty(QTextFormat::BackgroundBrush)) {
+            if (!m_keepColors && blockFormat.hasProperty(QTextFormat::BackgroundBrush)) {
                 blockFormat.clearBackground();
                 cursor.setPosition(block.position());
                 cursor.setBlockFormat(blockFormat);
@@ -308,7 +324,8 @@ void Reader::loadChapters() {
                 QTextCharFormat format = fragment.charFormat();
                 for (const auto &name : format.anchorNames())
                     anchors.insert(name, fragment.position());
-                if (format.hasProperty(QTextFormat::ForegroundBrush) || format.hasProperty(QTextFormat::BackgroundBrush)) {
+                if (!m_keepColors &&
+                    (format.hasProperty(QTextFormat::ForegroundBrush) || format.hasProperty(QTextFormat::BackgroundBrush))) {
                     format.clearForeground();
                     format.clearBackground();
                     cursor.setPosition(fragment.position());
@@ -324,6 +341,8 @@ void Reader::loadChapters() {
         m_chapters.push_back(std::move(document));
     }
 }
+
+bool Reader::keepColors() const { return m_preferences->readingTheme() == QLatin1String("original"); }
 
 void Reader::styleChapters() {
     if (m_format != QLatin1String("epub"))
@@ -1631,6 +1650,7 @@ void Reader::addWord(const QString &word, const QString &definition) {
     for (const auto &value : m_vocabulary)
         if (value.toObject()["word"].toString().compare(word.trimmed(), Qt::CaseInsensitive) == 0)
             return;
+    checkpoint();
     m_vocabulary.prepend(QJsonObject{{"word", word.trimmed()},
                                      {"definition", definition},
                                      {"context", selectionContext()},

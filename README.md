@@ -16,6 +16,7 @@ looked up, and your highlights and notes exportable as Markdown.
 - **Reading.** Pages are paginated to the window, two side by side when there's
   room. Themes (Original, Paper, Calm, Quiet, Night, and Omarchy, which follows
   your desktop theme), typeface, size, line spacing, margins, and justification.
+  Original keeps an EPUB's own colors; the other themes use theirs.
   Dark themes show PDFs inverted.
 - **Small print.** A PDF whose text would be tiny in the window switches to fit
   text: the page is zoomed until its body text matches your text size, then

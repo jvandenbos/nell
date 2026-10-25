@@ -249,6 +249,8 @@ private:
     bool loadPdf(const QString &path);
     void loadChapters();
     void styleChapters();
+    // The Original theme shows an EPUB in its publisher's colors.
+    bool keepColors() const;
     void paginate();
     void setPage(int page, bool keepPlace);
     void setSlice(int slice);
@@ -301,6 +303,7 @@ private:
     qint64 m_characterCount = 0;
     QList<int> m_pageStart;
     bool m_keepFonts = false;
+    bool m_keepColors = false;
 
     std::unique_ptr<Poppler::Document> m_pdf;
     mutable QHash<int, QList<Word>> m_pdfWordCache;
