@@ -107,6 +107,7 @@ version 1. A file `QSettings` can't parse, or one with a higher `version`, is
 read but never written. The keys are `reading/theme`, `reading/font`,
 `reading/fontSize` (12 to 44), `reading/lineSpacing` (1.0 to 2.0),
 `reading/margins` (0 to 2), `reading/justify`, `reading/spread`,
+`reading/hideRunningHeads` (fit text leaves out running heads; default true),
 `reading/infoMode`, `reading/speed` (the learned reading speed), and
 `library/sort`.
 

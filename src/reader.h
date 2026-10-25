@@ -8,6 +8,7 @@
 #include <QJsonObject>
 #include <QObject>
 #include <QRectF>
+#include <QSet>
 #include <QSizeF>
 #include <QTimer>
 #include <QVariantList>
@@ -180,6 +181,9 @@ public:
     void setFitText(bool fit);
     int slice() const { return m_slice; }
     int sliceCount() const;
+    // The part of the current PDF page in view, top and bottom in points:
+    // the slice in fit text, else the whole page.
+    QPair<double, double> visibleSpan() const;
     // The height most of a PDF's words are set at, in points: the font size,
     // or up to an eighth more for fonts with tall ascenders. 0 for an EPUB or
     // a PDF without text.
@@ -230,7 +234,7 @@ private:
     double pageFitScale() const;
     double fitScale(int page) const;
     QRectF pdfContent(int page) const;
-    const QList<double> &sliceTops(int page) const;
+    const QList<QPair<double, double>> &slices(int page) const;
     QPair<double, double> sliceSpan(int page, int slice) const;
     int sliceOf(int page, int word) const;
     int firstWordInSlice(int page, int slice) const;
@@ -279,13 +283,14 @@ private:
     double m_pdfCharactersPerPage = 1800;
     QHash<int, QList<QRectF>> m_pdfSearchHits;
     double m_pdfBodySize = 0;
-    // Running heads and feet, in points from the top of the page: text above
-    // m_pdfHeadEnd or below m_pdfFootStart repeats on most pages, and ink
-    // between those and the cuts (a rule under a heading) goes with it.
-    double m_pdfHeadEnd = 0, m_pdfHeadCut = 0;
-    double m_pdfFootStart = 1e9, m_pdfFootCut = 1e9;
+    // Running heads and feet: the words that recur in the same place on most
+    // pages, and how far down (and up from the foot) ink beside them, such as
+    // a rule under a heading, goes with them, in points.
+    QSet<QString> m_pdfRunning;
+    double m_pdfHeadCut = 0;
+    double m_pdfFootCut = 1e9;
     mutable QHash<int, QRectF> m_pdfContentCache;
-    mutable QHash<int, QList<double>> m_sliceCache;
+    mutable QHash<int, QList<QPair<double, double>>> m_sliceCache;
     int m_fitTextChoice = -1;  // -1 follows detection, 0 off, 1 on
     bool m_fitText = false;
     int m_slice = 0;

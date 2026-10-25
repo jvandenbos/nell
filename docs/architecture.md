@@ -65,14 +65,20 @@ smallest size an EPUB can be set to. For such a book the Reader:
   page's content still fits the window's width, and uses one column;
 - crops the page to its content: the ink found by a 24 dpi render plus the word
   boxes, minus running heads and feet (words near the top or bottom edge that
-  recur in the same place on most of the first ten pages, ignoring digits);
-- cuts the page into slices one view high, moving each cut up above any line
-  it would go through, so no line is shown in halves and none is skipped.
+  recur in the same place on most of the first ten pages, ignoring digits).
+  Only those recurring words are left out, on any page, so a heading that sits
+  as high as the running head on its own page stays. `Preferences::hideRunningHeads`
+  (on by default) turns this part off by itself;
+- cuts the page into slices one view high, moving each cut up until it crosses
+  no word box on the page. If that leaves under three quarters of a view (no
+  clean cut, as with staggered columns), the slice is a full view and the next
+  one starts at the top of the line cut at its foot, so lines repeat but none
+  is skipped. Only a word taller than the view is ever shown in parts.
 
 `m_page` stays the PDF page and `m_slice` picks the slice, so the rest of the
 reader still counts pages as it always has. The saved place is the first word
 of the slice, which finds the right slice again after the window or text size
-changes. A choice made with the Appearance switch is saved with the book as
+changes; a word belongs to the first slice that shows it whole. A choice made with the Appearance switch is saved with the book as
 `fitText` and only when it differs from what detection would pick.
 
 ## Borrowed code

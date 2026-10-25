@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Leaving out running heads and feet in fit text is its own setting
+  (`Preferences.hideRunningHeads`, on by default), so it can be undone without
+  turning fit text off.
+
 ### Fixed
 
 - `nell --version`, `--help`, a mistyped option, and the commands that only
@@ -27,6 +33,12 @@ All notable changes to this project are documented here. The format follows
   time, notices the change on open, and opens the new contents as a new entry
   (`Reader.fileChanged`, `Reader.previousRevision`), leaving the old notes
   with the old one. An unpacked EPUB is reused only if it came from the same file.
+- Fit text checked a cut only against words below the first quarter of the
+  screen, so tall or staggered lines could be cut through. Every word on the
+  page is checked now, and where no clean cut exists the cut line is shown
+  again at the top of the next screen. Running-head removal only drops the
+  words that recur, so a heading as high as the running head on its own page
+  is no longer hidden. The README no longer promises no line is ever cut.
 
 ## [0.3.0] - 2026-10-24
 

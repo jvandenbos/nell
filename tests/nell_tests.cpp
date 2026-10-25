@@ -8,6 +8,7 @@
 #include <QRegularExpression>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <poppler-qt6.h>
 
 #include "dictionary.h"
 #include "epub.h"
@@ -446,6 +447,65 @@ private slots:
             reader.next();
         QCOMPARE(reader.page(), 0);
         QCOMPARE(wordAt(649), QString("Line"));
+
+        // A heading as high as the running head, but only on its own page, stays.
+        auto document = Poppler::Document::load(dir.path() + "/guide.pdf");
+        double heading = -1;
+        for (const auto &box : document->page(2)->textList())
+            if (box->text() == QLatin1String("Chapter"))
+                heading = box->boundingBox().top();
+        QVERIFY(heading > 0);
+        reader.goToPage(2);
+        QVERIFY2(reader.visibleSpan().first <= heading, qPrintable(QString::number(reader.visibleSpan().first)));
+        reader.goToPage(1);
+        QVERIFY(reader.visibleSpan().first > heading);
+
+        // Running heads can be shown again without turning fit text off.
+        preferences.setHideRunningHeads(false);
+        QVERIFY(reader.fitText());
+        reader.goToPage(0);
+        QCOMPARE(wordAt(0), QString("Study"));
+    }
+
+    void fitTextNeverLosesALine()
+    {
+        // Two columns whose lines are staggered by half a line: no cut across
+        // the page misses every line, so slices must overlap instead.
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        const QString path = makeStaggeredPdf(dir.path() + "/columns.pdf");
+        const QString id = library.add(path);
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(id));
+        reader.setGeometry(1200, 650, 1, 0);
+        QVERIFY(reader.fitText());
+        QList<QPair<double, double>> spans{reader.visibleSpan()};
+        while (reader.page() == 0 && reader.slice() + 1 < reader.sliceCount()) {
+            reader.next();
+            spans << reader.visibleSpan();
+        }
+        QVERIFY(spans.size() > 2);
+        auto document = Poppler::Document::load(path);
+        int words = 0;
+        for (const auto &box : document->page(0)->textList()) {
+            const QRectF rect = box->boundingBox();
+            bool whole = false;
+            for (const auto &span : spans)
+                whole = whole || (rect.top() - rect.height() / 4 >= span.first - 0.01 && rect.bottom() <= span.second + 0.01);
+            QVERIFY2(whole, qPrintable(QString("%1 at %2–%3").arg(box->text()).arg(rect.top()).arg(rect.bottom())));
+            ++words;
+        }
+        QVERIFY(words > 100);
+        // The place still finds its slice again.
+        reader.goToPage(0);
+        reader.next();
+        reader.next();
+        const int slice = reader.slice();
+        reader.close();
+        QVERIFY(reader.openBook(id));
+        reader.setGeometry(1200, 650, 1, 0);
+        QCOMPARE(reader.slice(), slice);
     }
 
     void damagedOrNewerNotesAreNeverOverwritten()
@@ -988,7 +1048,27 @@ private:
             if (running) {
                 painter.drawText(QPointF(line, writer.height() * 0.05), "Study guide");
                 painter.drawText(QPointF(line, writer.height() * 0.97), QString("Page %1").arg(page + 1));
+                if (page == 2)
+                    painter.drawText(QPointF(writer.width() / 2, writer.height() * 0.05), "Chapter Three");
             }
+        }
+        painter.end();
+        return path;
+    }
+
+    // One A4 page of 7 pt text in two columns, the right one's lines half a
+    // line lower than the left's.
+    static QString makeStaggeredPdf(const QString &path)
+    {
+        QPdfWriter writer(path);
+        writer.setTitle(QString());
+        writer.setPageSize(QPageSize(QPageSize::A4));
+        QPainter painter(&writer);
+        painter.setFont(QFont("sans", 7));
+        const double line = writer.resolution() * 7 * 1.4 / 72;
+        for (double y = line * 2; y < writer.height() - line * 2; y += line) {
+            painter.drawText(QPointF(line, y), "Left column words here");
+            painter.drawText(QPointF(writer.width() / 2, y + line / 2), "Right column words too");
         }
         painter.end();
         return path;

@@ -53,6 +53,7 @@ Preferences::Preferences(Theme *theme, const QString &file, QObject *parent)
     m_justify = m_settings.value("reading/justify", true).toBool();
     m_margins = qBound(0, m_settings.value("reading/margins", 1).toInt(), 2);
     m_spread = m_settings.value("reading/spread", true).toBool();
+    m_hideRunningHeads = m_settings.value("reading/hideRunningHeads", true).toBool();
     m_librarySort = m_settings.value("library/sort", "recent").toString();
     m_infoMode = m_settings.value("reading/infoMode", 0).toInt();
     // About 250 words a minute, until the reader shows us their own pace.
@@ -153,6 +154,14 @@ void Preferences::setSpread(bool spread) {
         return;
     m_spread = spread;
     store("reading/spread", spread);
+    emit layoutChanged();
+}
+
+void Preferences::setHideRunningHeads(bool hide) {
+    if (hide == m_hideRunningHeads)
+        return;
+    m_hideRunningHeads = hide;
+    store("reading/hideRunningHeads", hide);
     emit layoutChanged();
 }
 

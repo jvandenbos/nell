@@ -19,8 +19,12 @@ looked up, and your highlights and notes exportable as Markdown.
   Dark themes show PDFs inverted.
 - **Small print.** A PDF whose text would be tiny in the window switches to fit
   text: the page is zoomed until its body text matches your text size, then
-  read one screenful at a time. Running headers and footers are dropped, and
-  no line is ever cut in half. `Ctrl++` and `Ctrl+−` change the zoom; Appearance
+  read one screenful at a time. Running headers and footers are dropped (a
+  setting of its own, so they can be kept). Each screen ends above a line
+  rather than through it; where there's no clean place to cut, as with
+  staggered columns, the line cut at the foot of one screen is shown whole at
+  the top of the next, so nothing is skipped. A scanned PDF has no text to
+  measure and isn't fitted. `Ctrl++` and `Ctrl+−` change the zoom; Appearance
   turns it off for that book.
 - **Marking.** Select text to highlight it in five colors or underline it, add a
   note, copy it, look it up in Wiktionary, or search for it. Bookmark pages.

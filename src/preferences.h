@@ -23,6 +23,9 @@ class Preferences : public QObject {
     Q_PROPERTY(bool justify READ justify WRITE setJustify NOTIFY layoutChanged)
     Q_PROPERTY(int margins READ margins WRITE setMargins NOTIFY layoutChanged)
     Q_PROPERTY(bool spread READ spread WRITE setSpread NOTIFY layoutChanged)
+    // In fit text, leave out a PDF's running heads and feet. Separate from
+    // fit text itself, so it can be undone on its own if it hides too much.
+    Q_PROPERTY(bool hideRunningHeads READ hideRunningHeads WRITE setHideRunningHeads NOTIFY layoutChanged)
     Q_PROPERTY(QString librarySort READ librarySort WRITE setLibrarySort NOTIFY librarySortChanged)
     Q_PROPERTY(int infoMode READ infoMode WRITE setInfoMode NOTIFY infoModeChanged)
     // Why the settings file isn't being written, if it isn't: it's damaged,
@@ -57,6 +60,8 @@ public:
     void setMargins(int margins);
     bool spread() const { return m_spread; }
     void setSpread(bool spread);
+    bool hideRunningHeads() const { return m_hideRunningHeads; }
+    void setHideRunningHeads(bool hide);
     QString librarySort() const { return m_librarySort; }
     void setLibrarySort(const QString &sort);
     int infoMode() const { return m_infoMode; }
@@ -91,6 +96,7 @@ private:
     bool m_justify;
     int m_margins;
     bool m_spread;
+    bool m_hideRunningHeads;
     QString m_librarySort;
     int m_infoMode;
     double m_readingSpeed;

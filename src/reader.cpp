@@ -155,6 +155,8 @@ Reader::Reader(Library *library, Preferences *preferences, QObject *parent)
     connect(m_preferences, &Preferences::layoutChanged, this, [this] {
         if (!isOpen())
             return;
+        // Where a page's content is depends on whether running heads count.
+        m_pdfContentCache.clear();
         if (m_format == QLatin1String("epub") && m_keepFonts != m_preferences->fontFamily().isEmpty())
             loadChapters();
         styleChapters();
@@ -420,21 +422,26 @@ bool Reader::loadPdf(const QString &path) {
 //
 // Running heads and feet are words near the top or bottom edge that recur in
 // the same place on most pages; digits are ignored so page numbers count.
+namespace {
+// A word as a running head or foot would recur: its place down the page and
+// its text, digits left out so page numbers match.
+QString runningKey(const QRectF &box, const QString &text) {
+    static const QRegularExpression digits("\\d");
+    return QString("%1:%2").arg(qRound(box.top())).arg(QString(text).remove(digits));
+}
+}
+
 void Reader::measurePdf() {
     QHash<int, qint64> characters;
     QHash<QString, int> pagesWith;
     const int measured = qMin(10, m_pdf->numPages());
     const double pageHeight = measured ? m_pdf->page(0)->pageSizeF().height() : 0;
-    static const QRegularExpression digits("\\d");
-    auto key = [](const Word &word) {
-        return QString("%1:%2").arg(qRound(word.box.top())).arg(QString(word.text).remove(digits));
-    };
     for (int page = 0; page < measured; ++page) {
         QSet<QString> seen;
         for (const auto &word : pdfWords(page)) {
             characters[qRound(word.box.height() * 2)] += word.text.size();
             if (word.box.bottom() < pageHeight * 0.15 || word.box.top() > pageHeight * 0.85)
-                seen.insert(key(word));
+                seen.insert(runningKey(word.box, word.text));
         }
         for (const auto &found : seen)
             ++pagesWith[found];
@@ -445,21 +452,21 @@ void Reader::measurePdf() {
             best = it.key();
     m_pdfBodySize = best / 2.0;
 
-    m_pdfHeadEnd = m_pdfHeadCut = 0;
-    m_pdfFootStart = m_pdfFootCut = 1e9;
+    m_pdfRunning.clear();
+    m_pdfHeadCut = 0;
+    m_pdfFootCut = 1e9;
     if (measured < 3)
         return;
     for (int page = 0; page < measured; ++page)
         for (const auto &word : pdfWords(page)) {
-            if (pagesWith.value(key(word)) < qMax(3, measured * 6 / 10))
+            const QString key = runningKey(word.box, word.text);
+            if (pagesWith.value(key) < qMax(3, measured * 6 / 10))
                 continue;
-            if (word.box.bottom() < pageHeight * 0.15) {
-                m_pdfHeadEnd = qMax(m_pdfHeadEnd, word.box.bottom());
+            m_pdfRunning.insert(key);
+            if (word.box.bottom() < pageHeight * 0.15)
                 m_pdfHeadCut = qMax(m_pdfHeadCut, word.box.bottom() + word.box.height() * 1.5);
-            } else if (word.box.top() > pageHeight * 0.85) {
-                m_pdfFootStart = qMin(m_pdfFootStart, word.box.top());
+            else if (word.box.top() > pageHeight * 0.85)
                 m_pdfFootCut = qMin(m_pdfFootCut, word.box.top() - word.box.height() * 1.5);
-            }
         }
 }
 
@@ -482,8 +489,9 @@ void Reader::close() {
     m_pdfContentCache.clear();
     m_sliceCache.clear();
     m_pdfBodySize = 0;
-    m_pdfHeadEnd = m_pdfHeadCut = 0;
-    m_pdfFootStart = m_pdfFootCut = 1e9;
+    m_pdfRunning.clear();
+    m_pdfHeadCut = 0;
+    m_pdfFootCut = 1e9;
     m_fitTextChoice = -1;
     if (m_fitText) {
         m_fitText = false;
@@ -672,7 +680,7 @@ void Reader::setSlice(int slice) {
 int Reader::sliceCount() const {
     if (!m_fitText || !m_pdf || m_page >= pageCount())
         return 1;
-    return int(sliceTops(m_page).size());
+    return int(slices(m_page).size());
 }
 
 bool Reader::smallPrint() const {
@@ -710,12 +718,15 @@ QRectF Reader::pdfContent(int page) const {
     const auto pdfPage = m_pdf->page(page);
     const QRectF whole(QPointF(0, 0), pdfPage ? pdfPage->pageSizeF() : QSizeF(1, 1));
     // Running heads and feet are left out, and so is ink beside them, but
-    // never so far that a word of the page's own text is lost.
+    // never so far that a word of the page's own text is lost. A word is
+    // only left out if it is one of the recurring ones, where it recurs, so
+    // a heading that happens to sit high on its page stays.
+    const bool hide = m_preferences->hideRunningHeads();
     QList<Word> body;
     for (const auto &word : pdfWords(page))
-        if (word.box.top() >= m_pdfHeadEnd && word.box.bottom() <= m_pdfFootStart)
+        if (!hide || !m_pdfRunning.contains(runningKey(word.box, word.text)))
             body << word;
-    double from = m_pdfHeadCut, to = m_pdfFootCut;
+    double from = hide ? m_pdfHeadCut : 0, to = hide ? m_pdfFootCut : whole.bottom();
     for (const auto &word : body) {
         from = qMin(from, word.box.top() - 2);
         to = qMax(to, word.box.bottom() + 2);
@@ -743,57 +754,90 @@ QRectF Reader::pdfContent(int page) const {
     return *m_pdfContentCache.insert(page, content);
 }
 
-// The top of each screenful of a page, in points. A slice ends above any line
-// it would cut through, so every line is read whole, once.
-const QList<double> &Reader::sliceTops(int page) const {
+// The part of a page each screenful shows, top and bottom in points. A cut is
+// made only where it crosses no word on the page, moving up from a full
+// screen until it does. When that would leave less than three quarters of a
+// screen (staggered columns, a tall caption), there's no clean cut: the
+// screen is shown full, cutting a line at its foot, and the next one starts
+// at the top of that line, so it's read whole there. Lines repeat; none is
+// lost.
+const QList<QPair<double, double>> &Reader::slices(int page) const {
     auto it = m_sliceCache.find(page);
     if (it != m_sliceCache.end())
         return *it;
     const QRectF content = pdfContent(page);
     const double height = m_pageSize.height() / fitScale(page);
     const auto &words = pdfWords(page);
-    QList<double> tops{content.top()};
+    // The highest top of any word the cut goes through, above the floor;
+    // the cut itself if it goes through none.
+    auto highestCrossing = [&](double cut, double floor) {
+        double highest = cut;
+        for (const auto &word : words) {
+            // Accents and ascenders reach a little above the box Poppler gives.
+            const double above = word.box.top() - word.box.height() / 4;
+            if (above < cut - 0.01 && word.box.bottom() > cut + 0.01 && above > floor)
+                highest = qMin(highest, above);
+        }
+        return highest;
+    };
+    QList<QPair<double, double>> spans;
     double top = content.top();
     while (height > 1 && top + height < content.bottom()) {
-        double bottom = top + height;
-        for (bool moved = true; moved;) {
-            moved = false;
-            for (const auto &word : words) {
-                // Accents and ascenders reach a little above the box Poppler gives.
-                const double above = word.box.top() - word.box.height() / 4;
-                if (above < bottom - 0.01 && word.box.bottom() > bottom + 0.01 && above > top + height / 4) {
-                    bottom = above;
-                    moved = true;
-                }
-            }
+        const double full = top + height;
+        double bottom = full;
+        for (double up; bottom > top + height / 4 && (up = highestCrossing(bottom, -1e9)) < bottom;)
+            bottom = up;
+        if (bottom > top + height / 4) {
+            spans << qMakePair(top, bottom);
+            top = bottom;
+            continue;
         }
-        tops << bottom;
-        top = bottom;
+        spans << qMakePair(top, full);
+        // Only a word taller than the screen can't be shown whole; it's cut.
+        const double next = highestCrossing(full, top + 1);
+        top = next < full ? next : full;
     }
-    return *m_sliceCache.insert(page, tops);
+    spans << qMakePair(top, content.bottom());
+    return *m_sliceCache.insert(page, spans);
 }
 
 QPair<double, double> Reader::sliceSpan(int page, int slice) const {
-    const auto &tops = sliceTops(page);
-    slice = qBound(0, slice, int(tops.size()) - 1);
-    return {tops[slice], slice + 1 < tops.size() ? tops[slice + 1] : pdfContent(page).bottom()};
+    const auto &spans = slices(page);
+    return spans[qBound(0, slice, int(spans.size()) - 1)];
 }
 
+QPair<double, double> Reader::visibleSpan() const {
+    if (!m_pdf || !isOpen())
+        return {};
+    if (!m_fitText)
+        return {0, m_pdf->page(m_page)->pageSizeF().height()};
+    return sliceSpan(m_page, m_slice);
+}
+
+// The first slice that shows the word whole; where lines repeat, a word is
+// in two, and it belongs to the first.
 int Reader::sliceOf(int page, int word) const {
     const auto &words = pdfWords(page);
     if (word < 0 || word >= words.size())
         return 0;
-    const double y = words[word].box.center().y();
-    const auto &tops = sliceTops(page);
+    const QRectF box = words[word].box;
+    const auto &spans = slices(page);
+    for (int slice = 0; slice < spans.size(); ++slice)
+        if (box.top() >= spans[slice].first - 0.01 && box.bottom() <= spans[slice].second + 0.01)
+            return slice;
+    // Taller than a screen: where its middle is.
     int slice = 0;
-    while (slice + 1 < tops.size() && tops[slice + 1] <= y)
+    while (slice + 1 < spans.size() && spans[slice + 1].first <= box.center().y())
         ++slice;
     return slice;
 }
 
 int Reader::firstWordInSlice(int page, int slice) const {
-    const auto span = sliceSpan(page, slice);
     const auto &words = pdfWords(page);
+    for (int i = 0; i < words.size(); ++i)
+        if (sliceOf(page, i) == slice)
+            return i;
+    const auto span = sliceSpan(page, slice);
     for (int i = 0; i < words.size(); ++i) {
         const double y = words[i].box.center().y();
         if (y >= span.first && y < span.second)
