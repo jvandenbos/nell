@@ -22,3 +22,15 @@ The version is written in three places, and `bin/check-version` (run by
 4. `bin/install`, then `nell --version` to confirm the installed binary.
 5. Commit as `Release x.y.z`, run `git tag -a vx.y.z -m "Nell x.y.z"`, and
    `git push --follow-tags`.
+
+## The PKGBUILD is a local recipe
+
+`pkgbuild/PKGBUILD` builds and packages the checkout it sits in: `source=()`
+and `sha256sums=()` are empty and `build()` runs `bin/build` in `$startdir/..`.
+That suits `bin/install` on this machine, but the package it makes is only
+whatever the working tree held, and the version check can't prove otherwise.
+A package published for others (the AUR, a repository) would need a
+`source` pinned to the release, such as the `vX.Y.Z` tag's tarball from
+GitHub, with its `sha256sums`; a `build()` in `$srcdir` from that source in a
+clean directory, not the checkout; and a `check()` running the suite, which
+covers `nell --version`, the commands, and the window starting.
