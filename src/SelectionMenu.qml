@@ -15,13 +15,6 @@ Popup {
     signal search()
     signal remove()
 
-    readonly property var colors: [
-        { key: "yellow", color: "#ffd60a" },
-        { key: "green", color: "#5fd068" },
-        { key: "blue", color: "#5ab4fa" },
-        { key: "pink", color: "#ff6fa5" },
-        { key: "purple", color: "#b38cff" }
-    ]
     readonly property string currentColor: {
         reader.annotationsChanged
         const id = reader.selectedHighlight
@@ -31,48 +24,65 @@ Popup {
         return match ? match.color : ""
     }
 
-    padding: 6
+    padding: 4
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     Material.roundedScale: theme.radius
+    Accessible.role: Accessible.ToolBar
+    Accessible.name: qsTr("Selection")
     background: Rectangle {
         radius: theme.radius
-        color: "#232327"
+        color: Tokens.surfaceRaised
         border.width: 1
-        border.color: "#38383f"
+        border.color: Tokens.border
     }
 
     contentItem: RowLayout {
-        spacing: 2
+        spacing: 0
 
         Repeater {
-            model: menu.colors
+            model: Tokens.highlights
             delegate: AbstractButton {
+                id: swatch
                 required property var modelData
-                implicitWidth: 32
-                implicitHeight: 32
+                implicitWidth: 36
+                implicitHeight: 36
+                focusPolicy: Qt.TabFocus
+                // The color H uses carries its shortcut.
+                readonly property string tip: modelData.key === prefs.highlightColor ? qsTr("%1 (H)").arg(modelData.name) : modelData.name
                 ToolTip.visible: hovered
                 ToolTip.delay: 600
-                ToolTip.text: qsTr("Highlight (H)")
+                ToolTip.text: tip
+                Accessible.role: Accessible.Button
+                Accessible.name: modelData.name
+                Accessible.checkable: true
+                Accessible.checked: menu.currentColor === modelData.key
                 onClicked: menu.highlight(modelData.key)
                 contentItem: Item {
                     Rectangle {
                         anchors.centerIn: parent
-                        width: 20
-                        height: 20
-                        radius: 10
-                        color: modelData.color
-                        border.width: menu.currentColor === modelData.key ? 2 : 0
-                        border.color: "white"
+                        width: 22
+                        height: 22
+                        radius: 11
+                        color: swatch.modelData.color
+                        border.width: menu.currentColor === swatch.modelData.key ? 2 : 0
+                        border.color: Tokens.text
                     }
+                    FocusRing { control: swatch; anchors.margins: 0; controlRadius: 16 }
                 }
             }
         }
         AbstractButton {
-            implicitWidth: 32
-            implicitHeight: 32
+            id: underline
+            implicitWidth: 36
+            implicitHeight: 36
+            focusPolicy: Qt.TabFocus
             ToolTip.visible: hovered
             ToolTip.delay: 600
             ToolTip.text: qsTr("Underline")
+            Accessible.role: Accessible.Button
+            Accessible.name: qsTr("Underline")
+            Accessible.checkable: true
+            Accessible.checked: menu.currentColor === "underline"
             onClicked: menu.highlight("underline")
             contentItem: Text {
                 text: "U"
@@ -80,21 +90,23 @@ Popup {
                 font.underline: true
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
-                color: menu.currentColor === "underline" ? "#ff453a" : "#e8e8ea"
+                color: menu.currentColor === "underline" ? Tokens.underline : Tokens.text
+                FocusRing { control: underline; anchors.margins: 0; controlRadius: 6 }
             }
         }
 
-        Rectangle { width: 1; height: 22; color: "#44444c"; Layout.leftMargin: 4; Layout.rightMargin: 4 }
+        Rectangle { implicitWidth: 1; implicitHeight: 24; color: Tokens.border; Layout.leftMargin: 4; Layout.rightMargin: 4 }
 
-        IconButton { iconName: "note"; tip: qsTr("Note (N)"); implicitWidth: 34; onClicked: menu.note() }
-        IconButton { iconName: "copy"; tip: qsTr("Copy (Ctrl+C)"); implicitWidth: 34; onClicked: menu.copy() }
-        IconButton { iconName: "define"; tip: qsTr("Look Up (D)"); implicitWidth: 34; onClicked: menu.define() }
-        IconButton { iconName: "search"; tip: qsTr("Search Book"); implicitWidth: 34; onClicked: menu.search() }
+        IconButton { iconName: "note"; tip: qsTr("Note (N)"); implicitWidth: 36; implicitHeight: 36; onClicked: menu.note() }
+        IconButton { iconName: "copy"; tip: qsTr("Copy (Ctrl+C)"); implicitWidth: 36; implicitHeight: 36; onClicked: menu.copy() }
+        IconButton { iconName: "define"; tip: qsTr("Look Up (D)"); implicitWidth: 36; implicitHeight: 36; onClicked: menu.define() }
+        IconButton { iconName: "search"; tip: qsTr("Search Book"); implicitWidth: 36; implicitHeight: 36; onClicked: menu.search() }
         IconButton {
             visible: reader.selectedHighlight.length > 0
             iconName: "trash"
             tip: qsTr("Remove Highlight")
-            implicitWidth: 34
+            implicitWidth: 36
+            implicitHeight: 36
             onClicked: menu.remove()
         }
     }

@@ -1,4 +1,8 @@
 {
+  "%n failed": {
+    "one": "%n failed",
+    "other": "%n failed"
+  },
   "%n hr": {
     "one": "%n hr",
     "other": "%n hr"
@@ -14,5 +18,9 @@
   "%n pages left in chapter": {
     "one": "%n page left in chapter",
     "other": "%n pages left in chapter"
+  },
+  "Added %n books": {
+    "one": "Added %n book",
+    "other": "Added %n books"
   }
 }

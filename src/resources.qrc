@@ -17,6 +17,10 @@
         <file alias="SearchPanel.qml">SearchPanel.qml</file>
         <file alias="SelectionMenu.qml">SelectionMenu.qml</file>
         <file alias="Toast.qml">Toast.qml</file>
+        <file alias="Tokens.qml">Tokens.qml</file>
+        <file alias="FocusRing.qml">FocusRing.qml</file>
+        <file alias="GoToDialog.qml">GoToDialog.qml</file>
+        <file alias="qmldir">qmldir</file>
         <file alias="skill.md">skill.md</file>
         <file alias="i18n/en.json">i18n/en.json</file>
         <file alias="i18n/da.json">i18n/da.json</file>

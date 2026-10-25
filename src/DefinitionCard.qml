@@ -10,23 +10,29 @@ Popup {
     id: card
     signal searchRequested(string word)
     property bool saved: false
+    // What was asked for, so Retry asks again for exactly that.
+    property string lookedUp
 
     function lookUp(text) {
         saved = false
+        lookedUp = text
         dictionary.define(text, reader.language)
         open()
     }
 
     width: Math.min(420, parent.width - 24)
     height: Math.min(implicitHeight, 420)
-    padding: 18
+    padding: 16
+    focus: true
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     Material.roundedScale: theme.radius
+    Accessible.role: Accessible.Dialog
+    Accessible.name: dictionary.word
     background: Rectangle {
         radius: theme.radius
-        color: "#1f1f23"
+        color: Tokens.surfaceRaised
         border.width: 1
-        border.color: "#38383f"
+        border.color: Tokens.border
     }
 
     Connections {
@@ -40,7 +46,7 @@ Popup {
     }
 
     contentItem: ColumnLayout {
-        spacing: 10
+        spacing: 8
 
         RowLayout {
             Layout.fillWidth: true
@@ -50,17 +56,29 @@ Popup {
                 font.pixelSize: 22
                 font.family: "serif"
                 font.weight: Font.DemiBold
+                color: Tokens.text
                 elide: Text.ElideRight
             }
             BusyIndicator { running: dictionary.busy; visible: running; implicitWidth: 28; implicitHeight: 28 }
+            IconButton { iconName: "close"; tip: qsTr("Close (Esc)"); implicitWidth: 32; implicitHeight: 32; onClicked: card.close() }
         }
 
-        Label {
+        RowLayout {
             visible: dictionary.error.length > 0
             Layout.fillWidth: true
-            text: dictionary.error
-            wrapMode: Text.Wrap
-            color: "#c0c0c8"
+            spacing: 8
+            Label {
+                Layout.fillWidth: true
+                text: dictionary.error
+                wrapMode: Text.Wrap
+                color: Tokens.text
+            }
+            Button {
+                text: qsTr("Retry")
+                flat: true
+                enabled: !dictionary.busy
+                onClicked: dictionary.define(card.lookedUp, reader.language)
+            }
         }
 
         ScrollView {
@@ -74,7 +92,7 @@ Popup {
             ColumnLayout {
                 id: definitions
                 width: parent.width
-                spacing: 10
+                spacing: 8
                 Repeater {
                     model: dictionary.entries
                     delegate: ColumnLayout {
@@ -84,7 +102,7 @@ Popup {
                         Label {
                             text: modelData.partOfSpeech
                             font.italic: true
-                            color: theme.accent
+                            color: Tokens.accentText
                         }
                         Repeater {
                             model: modelData.definitions
@@ -94,7 +112,7 @@ Popup {
                                 Layout.fillWidth: true
                                 text: (index + 1).toLocaleString(Qt.locale(), 'f', 0) + ". " + modelData
                                 wrapMode: Text.Wrap
-                                color: "#e0e0e4"
+                                color: Tokens.text
                             }
                         }
                     }
@@ -107,7 +125,7 @@ Popup {
             Label {
                 Layout.fillWidth: true
                 text: card.saved ? qsTr("Wiktionary · Saved to Words") : qsTr("Wiktionary")
-                color: "#8a8a92"
+                color: Tokens.textSecondary
                 font.pixelSize: 12
             }
             Button {

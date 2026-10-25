@@ -7,17 +7,24 @@ import QtQuick.Controls.Material
 ToolButton {
     id: button
     property string iconName
-    property color iconColor: Material.foreground
+    property color iconColor: Tokens.text
     property bool iconFilled: false
     property string tip
+    // What a screen reader says: the tip without its "(Esc)" shortcut.
+    property string accessibleName: tip.replace(/\s*\([^)]*\)$/, "")
 
     implicitWidth: 40
     implicitHeight: 40
     padding: 0
+    // A click leaves focus where it was (the page), so the arrow keys keep
+    // turning pages; Tab still reaches the button.
+    focusPolicy: Qt.TabFocus
     Material.roundedScale: theme.radius
     ToolTip.visible: hovered && tip.length > 0
     ToolTip.text: tip
     ToolTip.delay: 600
+    Accessible.role: Accessible.Button
+    Accessible.name: accessibleName.length ? accessibleName : text
 
     contentItem: Item {
         Icon {
@@ -35,5 +42,6 @@ ToolButton {
             font.pixelSize: 17
             font.family: "serif"
         }
+        FocusRing { control: button; controlRadius: Math.min(8, theme.radius) }
     }
 }
