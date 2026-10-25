@@ -90,7 +90,8 @@ Timestamps are ISO 8601 strings in UTC (`2026-10-23T13:55:02Z`).
 ```
 
 `fitText`, when present, is the reader's choice in Appearance for this PDF
-and overrides small-print detection. It's left out while detection decides.
+(on or off) and overrides small-print detection, even when detection would
+choose the same. It's left out while the choice is Auto.
 
 `chapter` and `offset` mean what they mean in the reader (see
 [architecture.md](architecture.md#places-in-a-book)). `color` is `yellow`, `green`, `blue`, `pink`,

@@ -405,10 +405,12 @@ private slots:
         QVERIFY(reader.sliceCount() > slices);
         preferences.setFontSize(20);
 
-        // Turning it off is remembered for the book; turning it back on
-        // follows detection again.
+        // Turning it off is remembered for the book; so is turning it on,
+        // even though detection would have, and Auto follows detection again.
+        QCOMPARE(reader.fitTextMode(), QString("auto"));
         reader.setFitText(false);
         QVERIFY(!reader.fitText());
+        QCOMPARE(reader.fitTextMode(), QString("off"));
         QCOMPARE(reader.sliceCount(), 1);
         reader.close();
         QVERIFY(!library.annotations(small).object["fitText"].toBool(true));
@@ -417,8 +419,36 @@ private slots:
         QVERIFY(!reader.fitText());
         reader.setFitText(true);
         QVERIFY(reader.fitText());
+        QCOMPARE(reader.fitTextMode(), QString("on"));
+        reader.close();
+        QVERIFY(library.annotations(small).object["fitText"].toBool(false));
+        QVERIFY(reader.openBook(small));
+        reader.setGeometry(1200, 650, 1, 0);
+        QCOMPARE(reader.fitTextMode(), QString("on"));
+        reader.setFitTextMode("auto");
+        QVERIFY(reader.fitText());
         reader.close();
         QVERIFY(!library.annotations(small).object.contains("fitText"));
+    }
+
+    void smallPrintIsMeasuredAtTheColumnShown()
+    {
+        // 10 pt text in a tall window: fine on one page, small print when
+        // the window shows two pages side by side.
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        const QString id = library.add(makeTextPdf(dir.path() + "/ten.pdf", 10, 2));
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(id));
+        reader.setGeometry(1200, 1600, 1, 0);
+        QVERIFY(!reader.smallPrint());
+        QVERIFY(!reader.fitText());
+        reader.setGeometry(1200, 1600, 2, 20);
+        QVERIFY(reader.smallPrint());
+        // Resizes are paginated once they settle.
+        QTRY_VERIFY(reader.fitText());
+        QCOMPARE(reader.columns(), 1);
     }
 
     void fitTextLeavesOutRunningHeadsAndFeet()

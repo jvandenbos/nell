@@ -73,7 +73,12 @@ class Reader : public QObject {
     Q_PROPERTY(QString selectedHighlight READ selectedHighlight NOTIFY selectionChanged)
     Q_PROPERTY(QVariantList searchResults READ searchResults NOTIFY searchChanged)
     Q_PROPERTY(bool smallPrint READ smallPrint NOTIFY layoutChanged)
+    // Whether fit text is on. Setting it is an explicit choice for this book.
     Q_PROPERTY(bool fitText READ fitText WRITE setFitText NOTIFY fitTextChanged)
+    // The reader's choice for this book: "auto" follows small-print
+    // detection, "on" and "off" are kept as chosen, even when detection would
+    // pick the same.
+    Q_PROPERTY(QString fitTextMode READ fitTextMode WRITE setFitTextMode NOTIFY fitTextChanged)
     // The book's notes file can't be written safely (damaged, or from a
     // newer Nell): marks shown are as saved, and changes aren't kept.
     Q_PROPERTY(bool notesLocked READ notesLocked NOTIFY openChanged)
@@ -176,9 +181,9 @@ public:
     bool smallPrint() const;
     bool notesLocked() const { return m_notesLocked; }
     bool fitText() const { return m_fitText; }
-    // The reader's choice for this book, kept with its notes; choosing what
-    // detection would pick anyway goes back to following detection.
     void setFitText(bool fit);
+    QString fitTextMode() const;
+    void setFitTextMode(const QString &mode);
     int slice() const { return m_slice; }
     int sliceCount() const;
     // The part of the current PDF page in view, top and bottom in points:

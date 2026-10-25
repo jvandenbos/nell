@@ -58,7 +58,8 @@ these pairs on every pagination and are never stored.
 
 A PDF counts as small print when its body text, which is the height most of
 its characters are set at, would be drawn under `Reader::SmallPrintPixels`
-(12.5 px) with the page fitted to the window. That is smaller than the
+(12.5 px) with the page fitted to one column of the view, as it would be drawn
+without fit text (half the width in a two-page spread). That is smaller than the
 smallest size an EPUB can be set to. For such a book the Reader:
 
 - zooms each page until the body text is the reader's font size, capped so the
@@ -78,8 +79,11 @@ smallest size an EPUB can be set to. For such a book the Reader:
 `m_page` stays the PDF page and `m_slice` picks the slice, so the rest of the
 reader still counts pages as it always has. The saved place is the first word
 of the slice, which finds the right slice again after the window or text size
-changes; a word belongs to the first slice that shows it whole. A choice made with the Appearance switch is saved with the book as
-`fitText` and only when it differs from what detection would pick.
+changes; a word belongs to the first slice that shows it whole.
+
+`Reader::fitTextMode` is the reader's choice for the book: `"auto"` follows
+detection, `"on"` and `"off"` are kept as chosen, even when detection would
+pick the same, and are saved with the book as `fitText`.
 
 ## Borrowed code
 

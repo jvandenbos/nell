@@ -687,19 +687,35 @@ bool Reader::smallPrint() const {
     return m_pdf && m_pdfBodySize > 0 && !m_area.isEmpty() && m_pdfBodySize * pageFitScale() < SmallPrintPixels;
 }
 
-void Reader::setFitText(bool fit) {
-    if (!m_pdf || fit == m_fitText)
+void Reader::setFitText(bool fit) { setFitTextMode(fit ? "on" : "off"); }
+
+QString Reader::fitTextMode() const {
+    return m_fitTextChoice < 0 ? QStringLiteral("auto") : m_fitTextChoice == 1 ? QStringLiteral("on") : QStringLiteral("off");
+}
+
+void Reader::setFitTextMode(const QString &mode) {
+    const int choice = mode == QLatin1String("on") ? 1 : mode == QLatin1String("off") ? 0 : mode == QLatin1String("auto") ? -1 : -2;
+    if (!m_pdf || choice == -2 || choice == m_fitTextChoice)
         return;
-    m_fitTextChoice = fit == smallPrint() ? -1 : int(fit);
+    m_fitTextChoice = choice;
+    const bool before = m_fitText;
     paginate();
+    // paginate() announces a change of fit text itself; a change of mode
+    // alone still needs saying.
+    if (before == m_fitText)
+        QMetaObject::invokeMethod(this, &Reader::fitTextChanged, Qt::QueuedConnection);
     scheduleSave();
 }
 
-// How big a whole page is drawn when it fits the window. The first page
-// stands for the book, so the answer doesn't change from page to page.
+// How big a whole page is drawn when it fits one column of the view, as the
+// pages are drawn without fit text: in a spread that's half the width. The
+// first page stands for the book, so the answer doesn't change from page to
+// page.
 double Reader::pageFitScale() const {
     const QSizeF points = m_pdf->page(0)->pageSizeF();
-    return qMin(m_area.width() / points.width(), m_area.height() / points.height());
+    const int columns = qMax(1, m_requestedColumns);
+    const double width = (m_area.width() - m_gap * (columns - 1)) / columns;
+    return qMin(width / points.width(), m_area.height() / points.height());
 }
 
 // Body text at the reader's font size, unless the page's content would then

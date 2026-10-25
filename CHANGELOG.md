@@ -11,6 +11,8 @@ All notable changes to this project are documented here. The format follows
 - Leaving out running heads and feet in fit text is its own setting
   (`Preferences.hideRunningHeads`, on by default), so it can be undone without
   turning fit text off.
+- Fit text per book is Auto, On, or Off (`Reader.fitTextMode`); choosing On or
+  Off is kept even when detection would choose the same.
 
 ### Fixed
 
@@ -39,6 +41,8 @@ All notable changes to this project are documented here. The format follows
   again at the top of the next screen. Running-head removal only drops the
   words that recur, so a heading as high as the running head on its own page
   is no longer hidden. The README no longer promises no line is ever cut.
+- Small print is measured at the width a page is actually drawn, so a PDF that
+  is readable on a full window but tiny in a two-page spread gets fit text.
 
 ## [0.3.0] - 2026-10-24
 
