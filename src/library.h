@@ -48,6 +48,8 @@ class Library : public QObject {
 
 public:
     static constexpr int FormatVersion = 1;
+    // The notes export's own format version (`nell notes --json`).
+    static constexpr int NotesFormatVersion = 1;
     // How long a save waits for another Nell to finish its own, in ms.
     static constexpr int LockTimeout = 5000;
 
@@ -89,6 +91,10 @@ public:
     // error, when the file on disk can't be read safely.
     bool saveAnnotations(const QString &id, const QJsonObject &annotations, const QJsonObject &base,
                          QJsonObject *saved = nullptr);
+    // Reads back a notes export into books/<id>.json, merged with any notes
+    // already there, and returns the book's id; empty, with error set, if it
+    // isn't an export this Nell understands.
+    Q_INVOKABLE QString importNotes(const QJsonObject &notes);
     static QJsonObject mergeAnnotations(const QJsonObject &base, const QJsonObject &ours, const QJsonObject &theirs);
 
     // Nell was called Quire before 0.3.0. Its data, settings, and cache

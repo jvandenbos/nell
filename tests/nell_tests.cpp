@@ -623,6 +623,92 @@ private slots:
         QVERIFY(start > 0);
     }
 
+    void notesExportKeepsEverything()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        const QString id = library.add(makeEpub(dir.path()));
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(id));
+        reader.setGeometry(400, 500, 1, 0);
+        reader.select(0, 2, 9);
+        reader.setNote(reader.highlight("green"), "A note.");
+        reader.addWord("Chapter", "A main division of a book.");
+        reader.next();
+        reader.toggleBookmark();
+        const QString markdown = reader.notesMarkdown();
+        for (const char *expected : {"> Chapter One", "Location 1 · Green", "A note.", "## Bookmarks", "- Location ",
+                                     "## Words", "**Chapter**: A main division of a book."})
+            QVERIFY2(markdown.contains(QString::fromUtf8(expected)), qPrintable(expected + QString("\n\n") + markdown));
+        // Page numbers change with the window, so an EPUB's notes don't use them.
+        QVERIFY(!markdown.contains("Page "));
+
+        // JSON is versioned, and reads back into an empty library what was saved.
+        const QJsonObject notes = reader.notesJson();
+        QCOMPARE(notes["version"].toInt(), 1);
+        reader.close();
+        const QJsonObject saved = library.annotations(id).object;
+        QVERIFY(QFile::remove(dir.path() + "/data/books/" + id + ".json"));
+        QCOMPARE(library.importNotes(notes), id);
+        const QJsonObject imported = library.annotations(id).object;
+        for (const char *key : {"bookmarks", "highlights", "vocabulary", "position"})
+            QCOMPARE(imported[key], saved[key]);
+        // Importing again changes nothing; a newer export is refused.
+        QCOMPARE(library.importNotes(notes), id);
+        QCOMPARE(library.annotations(id).object["highlights"].toArray().size(), 1);
+        QJsonObject newer = notes;
+        newer["version"] = 2;
+        QVERIFY(library.importNotes(newer).isEmpty());
+
+        // With the book gone, the notes still export from what's stored.
+        QVERIFY(QFile::remove(dir.path() + "/book.epub"));
+        const QString exported = dir.path() + "/notes.md";
+        QVERIFY(reader.exportNotesFor(id, QUrl::fromLocalFile(exported)));
+        QFile file(exported);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QByteArray offline = file.readAll();
+        QVERIFY(offline.contains("> Chapter One") && offline.contains("A note.") && offline.contains("## Words"));
+    }
+
+    void notesCommandsExportAndImport()
+    {
+        QTemporaryDir dir;
+        const QString book = makePdf(dir.path() + "/paper.pdf", 3);
+        auto add = runNell(dir.path(), {"add", book});
+        QVERIFY2(add.code == 0, add.err.constData());
+        const QString id = QString::fromUtf8(add.out).section(' ', 0, 0).trimmed();
+        {
+            Library library(dir.path() + "/data/nell", dir.path() + "/cache/nell");
+            Preferences preferences(nullptr, dir.path() + "/config/nell/nell.conf");
+            Reader reader(&library, &preferences);
+            QVERIFY(reader.openBook(id));
+            reader.setGeometry(600, 800, 1, 0);
+            reader.next();
+            reader.select(0, 0, 1);
+            reader.highlight("pink");
+        }
+        auto exported = runNell(dir.path(), {"notes", id, "--json"});
+        QCOMPARE(exported.code, 0);
+        const QJsonObject notes = QJsonDocument::fromJson(exported.out).object();
+        QCOMPARE(notes["version"].toInt(), 1);
+        QCOMPARE(notes["highlights"].toArray()[0].toObject()["page"].toInt(), 2);
+        write(dir.path() + "/notes.json", exported.out);
+
+        // The book file gone: notes still print, from what's stored.
+        QVERIFY(QFile::remove(book));
+        auto markdown = runNell(dir.path(), {"notes", id, "--markdown"});
+        QCOMPARE(markdown.code, 0);
+        QVERIFY2(markdown.out.contains("> This is") && markdown.out.contains("Page 2 · Pink"), markdown.out.constData());
+
+        // And they read back after the notes file is lost.
+        QVERIFY(QFile::remove(dir.path() + "/data/nell/books/" + id + ".json"));
+        auto imported = runNell(dir.path(), {"import", dir.path() + "/notes.json"});
+        QVERIFY2(imported.code == 0, imported.err.constData());
+        Library library(dir.path() + "/data/nell", dir.path() + "/cache/nell");
+        QCOMPARE(library.annotations(id).object["highlights"].toArray()[0].toObject()["color"].toString(), QString("pink"));
+    }
+
     void damagedOrNewerNotesAreNeverOverwritten()
     {
         QTemporaryDir dir;

@@ -126,8 +126,22 @@ public:
     Q_INVOKABLE void removeWord(int index);
     Q_INVOKABLE void undo();
     Q_INVOKABLE void redo();
+    // The open book's notes as Markdown, placed by page (PDF) or location
+    // (EPUB), never by layout-dependent page numbers.
     Q_INVOKABLE QString notesMarkdown() const;
+    // Writes the open book's notes: JSON (the versioned export, which
+    // `nell import` reads back) when the file ends in .json, else Markdown.
     Q_INVOKABLE bool exportNotes(const QUrl &url);
+    // The same for any book in the library, open or not, from its stored
+    // notes when it isn't: works when the book file itself is gone.
+    Q_INVOKABLE bool exportNotesFor(const QString &id, const QUrl &url);
+
+    // The open book's notes for export, with locations and sections.
+    QJsonObject notesJson() const;
+    // A book's notes for export from the library alone: no locations for an
+    // EPUB, since those need the book.
+    static QJsonObject notesJson(const QVariantMap &book, const QJsonObject &annotations);
+    static QString notesMarkdown(const QJsonObject &notes);
 
     Q_INVOKABLE void search(const QString &query);
     Q_INVOKABLE void goToResult(int index);

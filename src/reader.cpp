@@ -1681,40 +1681,172 @@ QVariantList Reader::highlights() const {
     return list;
 }
 
-QString Reader::notesMarkdown() const {
-    QString markdown = "# " + m_title + "\n";
-    if (!m_author.isEmpty())
-        markdown += "\n*" + m_author + "*\n";
+// ---- Exporting notes -------------------------------------------------------
+
+namespace {
+QJsonArray sortedMarks(const QJsonArray &marks, const char *offsetKey) {
+    QVariantList list = marks.toVariantList();
+    std::stable_sort(list.begin(), list.end(), [offsetKey](const QVariant &a, const QVariant &b) {
+        const auto x = a.toMap(), y = b.toMap();
+        return x["chapter"].toInt() != y["chapter"].toInt() ? x["chapter"].toInt() < y["chapter"].toInt()
+                                                            : x[offsetKey].toInt() < y[offsetKey].toInt();
+    });
+    return QJsonArray::fromVariantList(list);
+}
+
+// Where a mark is, in words that don't depend on the window: a PDF's page,
+// an EPUB's Kindle-style location, or, with the book unavailable, its
+// chapter (the spine document, counted from 1).
+QString placeOf(const QJsonObject &mark, bool pdf) {
+    if (pdf)
+        return Reader::tr("Page %1").arg(mark["chapter"].toInt() + 1);
+    if (mark.contains("location"))
+        return Reader::tr("Location %1").arg(mark["location"].toInt());
+    return Reader::tr("Chapter %1").arg(mark["chapter"].toInt() + 1);
+}
+
+QString colorName(const QString &color) {
+    if (color == QLatin1String("green")) return Reader::tr("Green");
+    if (color == QLatin1String("blue")) return Reader::tr("Blue");
+    if (color == QLatin1String("pink")) return Reader::tr("Pink");
+    if (color == QLatin1String("purple")) return Reader::tr("Purple");
+    if (color == QLatin1String("underline")) return Reader::tr("Underline");
+    return Reader::tr("Yellow");
+}
+}
+
+QJsonObject Reader::notesJson(const QVariantMap &book, const QJsonObject &annotations) {
+    QJsonObject notes{{"version", Library::NotesFormatVersion},
+                      {"id", book["id"].toString()},
+                      {"sha256", book["sha256"].toString()},
+                      {"title", book["title"].toString()},
+                      {"author", book["author"].toString()},
+                      {"format", book["format"].toString()},
+                      {"bookmarks", sortedMarks(annotations["bookmarks"].toArray(), "offset")},
+                      {"highlights", sortedMarks(annotations["highlights"].toArray(), "start")},
+                      {"vocabulary", annotations["vocabulary"].toArray()}};
+    if (annotations.contains("position"))
+        notes["position"] = annotations["position"];
+    if (annotations.contains("fitText"))
+        notes["fitText"] = annotations["fitText"];
+    // A PDF's page is fixed by the file, so it's known without opening it.
+    if (book["format"] == QLatin1String("pdf"))
+        for (const char *key : {"bookmarks", "highlights", "vocabulary"}) {
+            QJsonArray marks = notes[key].toArray();
+            for (qsizetype i = 0; i < marks.size(); ++i) {
+                QJsonObject mark = marks[i].toObject();
+                mark["page"] = mark["chapter"].toInt() + 1;
+                mark["location"] = mark["chapter"].toInt() + 1;
+                marks[i] = mark;
+            }
+            notes[key] = marks;
+        }
+    return notes;
+}
+
+QJsonObject Reader::notesJson() const {
+    if (!isOpen())
+        return {};
+    QJsonObject notes = notesJson(m_library->book(m_id), {{"bookmarks", m_bookmarks},
+                                                          {"highlights", m_highlights},
+                                                          {"vocabulary", m_vocabulary},
+                                                          {"position", QJsonObject{{"chapter", m_pdf ? m_page : m_chapter},
+                                                                                   {"offset", m_offset}}}});
+    if (m_fitTextChoice >= 0)
+        notes["fitText"] = m_fitTextChoice == 1;
+    auto place = [this](QJsonArray marks, const char *offsetKey) {
+        for (qsizetype i = 0; i < marks.size(); ++i) {
+            QJsonObject mark = marks[i].toObject();
+            const int chapter = mark["chapter"].toInt(), offset = mark[offsetKey].toInt();
+            if (chapter < 0 || chapter >= m_chapterPaths.size())
+                continue;
+            const qint64 global = globalOffset(chapter, offset);
+            mark["location"] = m_pdf ? chapter + 1 : int(global / CharactersPerLocation) + 1;
+            const int index = tocIndexAt(m_pdf ? chapter : global + 1);
+            if (index >= 0)
+                mark["section"] = m_toc[index].title;
+            marks[i] = mark;
+        }
+        return marks;
+    };
+    notes["bookmarks"] = place(notes["bookmarks"].toArray(), "offset");
+    notes["highlights"] = place(notes["highlights"].toArray(), "start");
+    notes["vocabulary"] = place(notes["vocabulary"].toArray(), "offset");
+    return notes;
+}
+
+QString Reader::notesMarkdown(const QJsonObject &notes) {
+    const bool pdf = notes["format"] == QLatin1String("pdf");
+    QString markdown = "# " + notes["title"].toString() + "\n";
+    if (!notes["author"].toString().isEmpty())
+        markdown += "\n*" + notes["author"].toString() + "*\n";
     QString section = "\n";
-    for (const auto &value : highlights()) {
-        const auto highlight = value.toMap();
+    for (const auto &value : notes["highlights"].toArray()) {
+        const auto highlight = value.toObject();
         if (highlight["section"].toString() != section) {
             section = highlight["section"].toString();
             if (!section.isEmpty())
                 markdown += "\n## " + section + "\n";
         }
         markdown += "\n> " + highlight["text"].toString().replace("\n", "\n> ") + "\n";
-        markdown += "\n" + tr("Page %1").arg(highlight["page"].toInt()) + "\n";
+        markdown += "\n" + placeOf(highlight, pdf) + " · " + colorName(highlight["color"].toString()) + "\n";
         if (!highlight["note"].toString().isEmpty())
             markdown += "\n" + highlight["note"].toString() + "\n";
     }
-    if (!m_vocabulary.isEmpty()) {
+    const QJsonArray bookmarks = notes["bookmarks"].toArray();
+    if (!bookmarks.isEmpty()) {
+        markdown += "\n## " + tr("Bookmarks") + "\n\n";
+        for (const auto &value : bookmarks) {
+            const auto bookmark = value.toObject();
+            markdown += "- " + placeOf(bookmark, pdf);
+            const QString title = bookmark["section"].toString(bookmark["title"].toString());
+            if (!title.isEmpty())
+                markdown += ", " + title;
+            if (!bookmark["snippet"].toString().isEmpty())
+                markdown += ": " + bookmark["snippet"].toString();
+            markdown += "\n";
+        }
+    }
+    const QJsonArray words = notes["vocabulary"].toArray();
+    if (!words.isEmpty()) {
         markdown += "\n## " + tr("Words") + "\n\n";
-        for (const auto &value : m_vocabulary) {
+        for (const auto &value : words) {
             const auto word = value.toObject();
             markdown += "- **" + word["word"].toString() + "**";
+            if (!word["definition"].toString().isEmpty())
+                markdown += ": " + word["definition"].toString().simplified();
             if (!word["context"].toString().isEmpty())
-                markdown += " — " + word["context"].toString();
+                markdown += "\n  > " + word["context"].toString().simplified();
+            if (word["chapter"].toInt(-1) >= 0)
+                markdown += "\n  " + placeOf(word, pdf);
             markdown += "\n";
         }
     }
     return markdown;
 }
 
-bool Reader::exportNotes(const QUrl &url) {
+QString Reader::notesMarkdown() const { return notesMarkdown(notesJson()); }
+
+bool Reader::exportNotes(const QUrl &url) { return exportNotesFor(m_id, url); }
+
+bool Reader::exportNotesFor(const QString &id, const QUrl &url) {
+    QJsonObject notes;
+    if (isOpen() && id == m_id) {
+        notes = notesJson();
+    } else {
+        // From what's stored alone, so notes can be had when the book can't.
+        const QVariantMap book = m_library->book(id);
+        const Store store = m_library->annotations(id);
+        if (book.isEmpty() || store.state == StoreState::Missing || store.state == StoreState::Corrupt) {
+            setError(book.isEmpty() ? tr("That book isn't in the library.") : tr("There are no notes to export."));
+            return false;
+        }
+        notes = notesJson(book, store.object);
+    }
     QSaveFile file(url.isLocalFile() ? url.toLocalFile() : url.toString());
-    const QByteArray markdown = notesMarkdown().toUtf8();
-    if (!file.open(QIODevice::WriteOnly) || file.write(markdown) != markdown.size() || !file.commit()) {
+    const QByteArray bytes = file.fileName().endsWith(".json", Qt::CaseInsensitive) ? QJsonDocument(notes).toJson()
+                                                                                    : notesMarkdown(notes).toUtf8();
+    if (!file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit()) {
         setError(tr("Could not export notes to %1: %2").arg(file.fileName(), file.errorString()));
         return false;
     }

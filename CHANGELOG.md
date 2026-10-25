@@ -13,6 +13,18 @@ All notable changes to this project are documented here. The format follows
   turning fit text off.
 - Fit text per book is Auto, On, or Off (`Reader.fitTextMode`); choosing On or
   Off is kept even when detection would choose the same.
+- `nell import` and `Library.importNotes` read back a JSON notes export.
+- `Reader.exportNotesFor(id, url)` exports any book's notes from what's
+  stored, so notes can be exported when the book file is gone; `nell notes`
+  does the same.
+
+### Changed
+
+- Exported notes are a reading record: the Markdown has each highlight's
+  color, the bookmarks, and the Words list with definitions, placed by PDF
+  page or EPUB location instead of page numbers that depend on the window.
+  The JSON export (`nell notes --json`, or Export Notes to a `.json` file) has
+  a `version` field and `location` in place of an EPUB `page`.
 
 ### Fixed
 

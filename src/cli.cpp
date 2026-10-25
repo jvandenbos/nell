@@ -170,28 +170,54 @@ int notes(const QStringList &arguments) {
         id = library.findId(Library::fileId(target));
     if (id.isEmpty())
         return fail(target + " isn't in the library. Add it with: nell add " + target);
-    // Page numbers depend on layout; these are at a typical window size.
+    // Places are pages and locations, which need no window; with the book
+    // missing or changed, the notes still come from what's stored.
     Preferences preferences(nullptr);
     Reader reader(&library, &preferences);
     reader.setReadOnly(true);
-    if (!reader.openBook(id))
-        return fail(reader.error());
-    reader.setGeometry(640, 900, 1, 0);
-    if (command.parser.isSet("markdown")) {
-        fprintf(stdout, "%s", qPrintable(reader.notesMarkdown()));
+    QJsonObject notes;
+    if (reader.openBook(id)) {
+        notes = reader.notesJson();
+    } else {
+        const Store store = library.annotations(id);
+        if (store.state == StoreState::Corrupt)
+            return fail(store.problem);
+        print(stderr, reader.error() + " Showing the notes as saved.");
+        notes = Reader::notesJson(library.book(id), store.object);
+    }
+    if (command.parser.isSet("json") && !command.parser.isSet("markdown")) {
+        print(notes);
         return 0;
     }
-    const QJsonObject object{{"id", id},
-                             {"title", reader.title()},
-                             {"author", reader.author()},
-                             {"highlights", QJsonArray::fromVariantList(reader.highlights())},
-                             {"bookmarks", QJsonArray::fromVariantList(reader.bookmarks())},
-                             {"vocabulary", QJsonArray::fromVariantList(reader.vocabulary())}};
-    if (command.parser.isSet("json")) {
-        print(object);
-        return 0;
-    }
-    fprintf(stdout, "%s", qPrintable(reader.notesMarkdown()));
+    fprintf(stdout, "%s", qPrintable(Reader::notesMarkdown(notes)));
+    return 0;
+}
+
+int importNotes(const QStringList &arguments) {
+    Command command("import", "Read back notes exported with nell notes --json, merged with any already there.");
+    command.parser.addPositionalArgument("file", "A JSON notes export", "<file>");
+    if (!command.parse(arguments))
+        return fail(command.parser.errorText());
+    if (command.parser.isSet("help"))
+        return print(stdout, command.parser.helpText()), 0;
+    if (command.parser.positionalArguments().size() != 1)
+        return fail("Name one exported notes file.");
+    QFile file(command.parser.positionalArguments().first());
+    if (!file.open(QIODevice::ReadOnly))
+        return fail(file.fileName() + ": " + file.errorString());
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject())
+        return fail(file.fileName() + " isn't JSON: " + error.errorString());
+    adoptQuireStorage();
+    Library library;
+    const QString id = library.importNotes(document.object());
+    if (id.isEmpty())
+        return fail(library.error());
+    if (command.parser.isSet("json"))
+        print(QJsonObject{{"id", id}, {"inLibrary", !library.book(id).isEmpty()}});
+    else
+        print(stdout, "Imported notes for " + id + (library.book(id).isEmpty() ? " (not in the library yet; add the book to see them)" : ""));
     return 0;
 }
 
@@ -242,6 +268,7 @@ QString cliSummary() {
            "  add <file>...                   Add EPUB and PDF books to the library\n"
            "  info <book>                     Print a book's title, author, and contents\n"
            "  notes <book> [--markdown]       Print a book's highlights, notes, and words\n"
+           "  import <file>                   Read back notes exported with notes --json\n"
            "  skill [install]                 Print the skill for coding agents, or install it\n"
            "Every command takes --json and --help.";
 }
@@ -256,7 +283,7 @@ void adoptQuireStorage() {
 }
 
 bool isCliCommand(const QString &word) {
-    return QStringList{"list", "add", "info", "notes", "skill", "help", "--help", "-h"}.contains(word);
+    return QStringList{"list", "add", "info", "notes", "import", "skill", "help", "--help", "-h"}.contains(word);
 }
 
 int runCli(const QStringList &arguments) {
@@ -265,6 +292,7 @@ int runCli(const QStringList &arguments) {
            : command == "add"   ? add(arguments)
            : command == "info"  ? info(arguments)
            : command == "notes" ? notes(arguments)
+           : command == "import" ? importNotes(arguments)
            : command == "skill" ? skill(arguments)
                                 : (print(stdout, "Usage: nell [command] [book]\n\n" + cliSummary()), 0);
 }

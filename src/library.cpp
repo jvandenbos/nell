@@ -466,7 +466,7 @@ QJsonObject Library::mergeAnnotations(const QJsonObject &base, const QJsonObject
     for (const auto &k : keys) {
         if (k == QLatin1String("bookmarks") || k == QLatin1String("highlights") || k == QLatin1String("vocabulary"))
             continue;
-        if (k == QLatin1String("position") || ours.value(k) != base.value(k)) {
+        if ((k == QLatin1String("position") && ours.contains(k)) || ours.value(k) != base.value(k)) {
             if (ours.contains(k))
                 merged[k] = ours[k];
             else
@@ -520,6 +520,38 @@ bool Library::saveAnnotations(const QString &id, const QJsonObject &annotations,
     if (saved)
         *saved = merged;
     return true;
+}
+
+QString Library::importNotes(const QJsonObject &notes) {
+    setError({});
+    static const QRegularExpression hex16("^[0-9a-f]{16}$");
+    const QString id = notes["id"].toString();
+    if (!hex16.match(id).hasMatch() || !notes["highlights"].isArray()) {
+        setError(tr("This isn't a Nell notes export."));
+        return {};
+    }
+    // Exports from before the field had it at 1.
+    if (notes["version"].toInt(1) > NotesFormatVersion) {
+        setError(tr("These notes were exported by a newer Nell."));
+        return {};
+    }
+    // The export adds places worked out for the reader; they aren't stored.
+    QJsonObject annotations;
+    for (const char *key : {"bookmarks", "highlights", "vocabulary"}) {
+        QJsonArray marks = notes[key].toArray();
+        for (qsizetype i = 0; i < marks.size(); ++i) {
+            QJsonObject mark = marks[i].toObject();
+            for (const char *field : {"location", "page", "section", "index", "missing"})
+                mark.remove(QLatin1String(field));
+            marks[i] = mark;
+        }
+        annotations[key] = marks;
+    }
+    for (const char *key : {"position", "fitText"})
+        if (notes.contains(key))
+            annotations[key] = notes[key];
+    // Merged as if from nothing, so what's there already stays alongside.
+    return saveAnnotations(id, annotations, QJsonObject()) ? id : QString();
 }
 
 // QSaveFile writes beside the target and renames it into place, so a crash

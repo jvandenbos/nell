@@ -102,6 +102,36 @@ so it marks that screenful; otherwise a PDF bookmark's `offset` is 0, the page.
 Removing a book from the library leaves this file in place, so adding the book
 again brings its marks back.
 
+## Notes export (`nell notes --json`, Export Notes to a `.json` file)
+
+```json
+{
+  "version": 1,
+  "id": "3f9c0a1b2d4e5f60", "sha256": "…", "format": "epub",
+  "title": "Alice's Adventures in Wonderland", "author": "Lewis Carroll",
+  "position": { "chapter": 3, "offset": 1820 },
+  "bookmarks": [ { "chapter": 3, "offset": 1820, "…": "…", "location": 412, "section": "A Mad Tea-Party" } ],
+  "highlights": [ { "id": "…", "chapter": 3, "start": 1900, "…": "…", "location": 413, "section": "…" } ],
+  "vocabulary": [ { "word": "treacle", "definition": "…", "…": "…", "location": 520 } ]
+}
+```
+
+Its own `version` (**1**, `Library::NotesFormatVersion`) is separate from the
+stores'. Each mark is as stored in `books/<id>.json`, plus places worked out
+for the reader: `location` (an EPUB's Kindle-style location, 150 characters
+each, or a PDF's page), `page` (PDFs only), and `section` (the contents entry
+it falls under). None of them depend on the window. When the book file is
+missing they're left out for an EPUB, and the rest still exports.
+`nell import <file>` (or `Library::importNotes`) reads an export back into
+`books/<id>.json`, dropping the worked-out places and merging with any notes
+already there; an export with a higher `version` is refused. An export without
+`version` (from 0.3.0 and before) reads as 1.
+
+The Markdown export places each highlight, bookmark, and word by page (PDF)
+or location (EPUB), never by an EPUB page number, and includes each
+highlight's color and note, the bookmarks, and the Words list with
+definitions and context.
+
 ## `~/.config/nell/nell.conf`
 
 Qt `QSettings` INI. `version` (under `[General]`) is the settings format

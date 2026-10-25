@@ -24,9 +24,15 @@ errors to stderr.
   there (even moved) finds it again by content, so it is safe to repeat.
 - `nell info <book>` — title, author, format, and table of contents of a file
   or a library id. Works on files not in the library.
-- `nell notes <book>` — highlights with their notes, grouped by chapter, plus
-  bookmarks and looked-up words. Prints Markdown by default; `--json` gives
-  each highlight's `text`, `note`, `color`, `page`, and `section`.
+- `nell notes <book>` — highlights with their notes and colors, grouped by
+  chapter, plus bookmarks and looked-up words with definitions. Prints
+  Markdown by default; `--json` gives the versioned export: each highlight's
+  `text`, `note`, `color`, `section`, and `location` (an EPUB's Kindle-style
+  location, a PDF's page; PDFs also have `page`). Works from the saved notes
+  when the book file is missing.
+- `nell import <file>` — read back a `nell notes --json` export, merged with
+  any notes already saved for that book. Only when the person asks to restore
+  notes.
 - `nell open [book]` — open the reader for the person. It needs their
   desktop, so do not wait on it.
 

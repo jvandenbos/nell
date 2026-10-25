@@ -17,7 +17,7 @@ main.cpp ──► Translator   ~/.config/omarchy/language → i18n/<lang>.json
 ```
 
 If the first argument is a CLI command (`list`, `add`, `info`, `notes`,
-`skill`), `main.cpp` sets `QT_QPA_PLATFORM=offscreen`, never loads QML, and
+`import`, `skill`), `main.cpp` sets `QT_QPA_PLATFORM=offscreen`, never loads QML, and
 hands over to `cli.cpp`. That is why the commands work over ssh and from agents.
 `--help` and `--version` are handled the same way, before any storage is
 touched.
