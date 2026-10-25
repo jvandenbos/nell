@@ -95,7 +95,11 @@ Hansson), so Nell behaves like its neighbours on the desktop.
 
 `tests/nell_tests.cpp` is one Qt Test suite covering the Omarchy theme
 and language watchers, the shipped translation catalogs, EPUB parsing, the
-library, the reader (pagination, marks and undo, search, PDFs), the reading-speed
-estimate, and Wiktionary parsing. It builds the
-same sources as the app minus QML and runs offscreen through `bin/test`, which
-first runs `bin/check-version`.
+library (including damaged and newer files, two writers at once, and files
+changed in place), the reader (pagination, marks and undo, search, PDFs and fit
+text, exports), the reading-speed estimate, and Wiktionary parsing. It builds
+the same sources as the app minus QML and runs offscreen through `bin/test`,
+which first runs `bin/check-version` and builds the app: some tests start
+`build/nell` itself, with every XDG directory and `HOME` in a temporary
+directory, to check `--version`, `--help`, the commands, Quire's migration, and
+that the window's QML loads.
