@@ -6,6 +6,14 @@ the app's semver. It goes up only when an existing reader would misread the new
 shape. Adding an optional field doesn't change it. The current format version
 is **1** (`Library::FormatVersion`).
 
+Nell reads each file as missing, valid, damaged (it doesn't parse), or newer
+(its `version` is above what this Nell knows). Only missing and valid files
+are ever written. A damaged or newer file is read as far as it can be, left
+byte for byte as it is, and named in `Library::storageProblems` so the window
+can say so; the app works on without saving to that file. Fields Nell doesn't
+know, at the top level or inside an entry, are kept when it writes a file
+back, so an older Nell doesn't strip what a newer one added.
+
 Timestamps are ISO 8601 strings in UTC (`2026-10-23T13:55:02Z`).
 
 ## `~/.local/share/nell/library.json`
@@ -72,7 +80,10 @@ again brings its marks back.
 
 ## `~/.config/nell/nell.conf`
 
-Qt `QSettings` INI. The keys are `reading/theme`, `reading/font`,
+Qt `QSettings` INI. `version` (under `[General]`) is the settings format
+version, **1**, written with the first setting saved; a file without it is
+version 1. A file `QSettings` can't parse, or one with a higher `version`, is
+read but never written. The keys are `reading/theme`, `reading/font`,
 `reading/fontSize` (12 to 44), `reading/lineSpacing` (1.0 to 2.0),
 `reading/margins` (0 to 2), `reading/justify`, `reading/spread`,
 `reading/infoMode`, `reading/speed` (the learned reading speed), and

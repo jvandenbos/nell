@@ -2,6 +2,7 @@
 
 #include <QJsonObject>
 #include <QObject>
+#include <QStringList>
 #include <QVariantList>
 
 // What the library knows about one book file without opening it for reading.
@@ -16,6 +17,19 @@ struct BookInfo {
     int pages = 0;        // PDFs only; an EPUB's pages depend on the window.
 };
 
+// What's on disk where a store (library.json, a book's notes) should be.
+// Only Missing and Valid may be written: a file Nell can't parse, or one a
+// newer Nell wrote, is read as far as it can be and never overwritten.
+enum class StoreState { Missing, Valid, Corrupt, Newer };
+
+struct Store {
+    StoreState state = StoreState::Missing;
+    QJsonObject object;
+    QString problem;  // Why it can't be written, for the reader.
+
+    bool writable() const { return state == StoreState::Missing || state == StoreState::Valid; }
+};
+
 // The books the reader has added, kept in ~/.local/share/nell/library.json,
 // with each book's place, bookmarks and highlights beside it in books/<id>.json.
 // Books are referenced where they live and never modified; a book's id is a
@@ -24,6 +38,11 @@ class Library : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantList books READ books NOTIFY changed)
     Q_PROPERTY(QString error READ error NOTIFY errorChanged)
+    // Stores Nell found it can't safely write (a damaged or newer library,
+    // book notes, or settings), one sentence each. They stay as they are on
+    // disk and the app works on without saving to them. storageWarning
+    // fires when one is added after startup; read this at startup.
+    Q_PROPERTY(QStringList storageProblems READ storageProblems NOTIFY storageProblemsChanged)
 
 public:
     static constexpr int FormatVersion = 1;
@@ -32,6 +51,9 @@ public:
 
     QVariantList books() const { return m_books; }
     QString error() const { return m_error; }
+    QStringList storageProblems() const { return m_storageProblems; }
+    // Records a problem once, however often it's reported.
+    void reportStorageProblem(const QString &problem);
 
     // Adds a file or file:// URL, or finds it if it's already there, and
     // returns its id; an empty id means it failed and error says why.
@@ -47,7 +69,11 @@ public:
 
     QString cacheRoot() const { return m_cacheDirectory; }
     QString cacheDirectory(const QString &id) const { return m_cacheDirectory + "/" + id; }
-    QJsonObject annotations(const QString &id) const;
+    // A book's notes as stored. Unknown fields are kept, so writing back
+    // what was read loses nothing a newer Nell added.
+    Store annotations(const QString &id) const;
+    // Refuses, and says why in error, when the file on disk can't be read
+    // safely, rather than replacing it.
     bool saveAnnotations(const QString &id, QJsonObject annotations);
 
     // Nell was called Quire before 0.3.0. Its data, settings, and cache
@@ -64,10 +90,13 @@ public:
     static QString fileId(const QString &path);
     static bool inspect(const QString &path, const QString &cacheDirectory, BookInfo *info, QString *error);
     static bool writeJson(const QString &path, const QJsonObject &object);
+    static Store readStore(const QString &path);
 
 signals:
     void changed();
     void errorChanged();
+    void storageProblemsChanged();
+    void storageWarning(const QString &problem);
 
 private:
     void load();
@@ -79,5 +108,9 @@ private:
     QString m_dataDirectory;
     QString m_cacheDirectory;
     QVariantList m_books;
+    // library.json as read, so fields this version doesn't know survive a save.
+    QJsonObject m_libraryObject;
+    bool m_libraryWritable = true;
     QString m_error;
+    QStringList m_storageProblems;
 };

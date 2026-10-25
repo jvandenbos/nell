@@ -25,8 +25,14 @@ class Preferences : public QObject {
     Q_PROPERTY(bool spread READ spread WRITE setSpread NOTIFY layoutChanged)
     Q_PROPERTY(QString librarySort READ librarySort WRITE setLibrarySort NOTIFY librarySortChanged)
     Q_PROPERTY(int infoMode READ infoMode WRITE setInfoMode NOTIFY infoModeChanged)
+    // Why the settings file isn't being written, if it isn't: it's damaged,
+    // a newer Nell wrote it, or saving failed. Empty when all is well.
+    Q_PROPERTY(QString storageProblem READ storageProblem NOTIFY storageProblemChanged)
 
 public:
+    // The settings file's own format version, kept as `version` in it.
+    static constexpr int FormatVersion = 1;
+
     explicit Preferences(Theme *theme, const QString &file = {}, QObject *parent = nullptr);
 
     QString readingTheme() const { return m_readingTheme; }
@@ -61,13 +67,20 @@ public:
     double readingSpeed() const { return m_readingSpeed; }
     void learnReadingSpeed(double charactersPerSecond);
 
+    QString storageProblem() const { return m_storageProblem; }
+
 signals:
     void colorsChanged();
     void layoutChanged();
     void librarySortChanged();
     void infoModeChanged();
+    void storageProblemChanged();
 
 private:
+    // Every write goes through here, so a file that mustn't be written isn't.
+    void store(const QString &key, const QVariant &value);
+    void setStorageProblem(const QString &problem);
+
     QSettings m_settings;
     Theme *m_theme;
     QString m_readingTheme;
@@ -81,4 +94,6 @@ private:
     QString m_librarySort;
     int m_infoMode;
     double m_readingSpeed;
+    bool m_writable = true;
+    QString m_storageProblem;
 };

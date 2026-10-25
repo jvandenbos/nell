@@ -320,16 +320,46 @@ QString Library::findId(const QString &pathOrId) const {
     return {};
 }
 
-QJsonObject Library::annotations(const QString &id) const {
-    QFile file(m_dataDirectory + "/books/" + id + ".json");
-    if (!file.open(QIODevice::ReadOnly))
-        return {};
-    return QJsonDocument::fromJson(file.readAll()).object();
+Store Library::readStore(const QString &path) {
+    Store store;
+    QFile file(path);
+    if (!file.exists())
+        return store;
+    if (!file.open(QIODevice::ReadOnly)) {
+        store.state = StoreState::Corrupt;
+        store.problem = tr("%1 can't be read: %2").arg(path, file.errorString());
+        return store;
+    }
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject()) {
+        store.state = StoreState::Corrupt;
+        store.problem = tr("%1 is damaged (%2), so Nell is leaving it as it is.")
+                            .arg(path, error.error != QJsonParseError::NoError ? error.errorString() : tr("not an object"));
+        return store;
+    }
+    store.object = document.object();
+    if (store.object["version"].toInt(1) > FormatVersion) {
+        store.state = StoreState::Newer;
+        store.problem = tr("%1 was written by a newer Nell, so this one only reads it.").arg(path);
+        return store;
+    }
+    store.state = StoreState::Valid;
+    return store;
 }
 
+Store Library::annotations(const QString &id) const { return readStore(m_dataDirectory + "/books/" + id + ".json"); }
+
 bool Library::saveAnnotations(const QString &id, QJsonObject annotations) {
+    const QString path = m_dataDirectory + "/books/" + id + ".json";
+    const Store existing = readStore(path);
+    if (!existing.writable()) {
+        reportStorageProblem(existing.problem);
+        setError(existing.problem);
+        return false;
+    }
     annotations["version"] = FormatVersion;
-    if (writeJson(m_dataDirectory + "/books/" + id + ".json", annotations))
+    if (writeJson(path, annotations))
         return true;
     setError(tr("Could not save your place and notes in %1.").arg(m_dataDirectory));
     return false;
@@ -347,19 +377,35 @@ bool Library::writeJson(const QString &path, const QJsonObject &object) {
 }
 
 void Library::load() {
-    QFile file(m_dataDirectory + "/library.json");
-    if (!file.open(QIODevice::ReadOnly))
-        return;
-    const auto object = QJsonDocument::fromJson(file.readAll()).object();
-    m_books = object["books"].toArray().toVariantList();
+    const Store store = readStore(m_dataDirectory + "/library.json");
+    m_libraryObject = store.object;
+    m_books = store.object["books"].toArray().toVariantList();
+    m_libraryWritable = store.writable();
+    if (!m_libraryWritable)
+        reportStorageProblem(store.problem);
 }
 
 bool Library::save() {
-    QJsonObject object{{"version", FormatVersion}, {"books", QJsonArray::fromVariantList(m_books)}};
+    if (!m_libraryWritable) {
+        setError(tr("The library can't be saved: %1").arg(m_storageProblems.value(0)));
+        return false;
+    }
+    QJsonObject object = m_libraryObject;
+    object["version"] = FormatVersion;
+    object["books"] = QJsonArray::fromVariantList(m_books);
     if (writeJson(m_dataDirectory + "/library.json", object))
         return true;
     setError(tr("Could not save the library in %1.").arg(m_dataDirectory));
     return false;
+}
+
+void Library::reportStorageProblem(const QString &problem) {
+    if (problem.isEmpty() || m_storageProblems.contains(problem))
+        return;
+    qWarning("nell: %s", qPrintable(problem));
+    m_storageProblems << problem;
+    emit storageProblemsChanged();
+    emit storageWarning(problem);
 }
 
 void Library::setError(const QString &message) {

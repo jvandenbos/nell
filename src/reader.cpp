@@ -200,7 +200,16 @@ bool Reader::openBook(const QString &id) {
     setError({});
     m_id = id;
 
-    const QJsonObject saved = m_library->annotations(id);
+    Store store = m_library->annotations(id);
+    if (m_unsaved.contains(id)) {
+        store.state = StoreState::Valid;
+        store.object = m_unsaved.value(id);
+    }
+    m_notesLocked = !store.writable();
+    if (m_notesLocked)
+        m_library->reportStorageProblem(store.problem);
+    m_savedAnnotations = store.object;
+    const QJsonObject &saved = m_savedAnnotations;
     m_bookmarks = saved["bookmarks"].toArray();
     m_highlights = saved["highlights"].toArray();
     m_vocabulary = saved["vocabulary"].toArray();
@@ -459,6 +468,8 @@ void Reader::close() {
     }
     m_slice = 0;
     m_bookmarks = m_highlights = m_vocabulary = QJsonArray();
+    m_savedAnnotations = QJsonObject();
+    m_notesLocked = false;
     m_searchResults.clear();
     m_searchChapter = m_searchStart = m_searchEnd = -1;
     m_selectionChapter = m_selectionStart = m_selectionEnd = -1;
@@ -1728,19 +1739,41 @@ void Reader::scheduleSave() {
         m_saveTimer.start();
 }
 
-void Reader::save() {
+bool Reader::save() {
     m_saveTimer.stop();
     if (!isOpen() || m_readOnly)
-        return;
+        return true;
+    // Notes another book couldn't save get another try.
+    for (auto it = m_unsaved.begin(); it != m_unsaved.end();)
+        it = it.key() != m_id && m_library->saveAnnotations(it.key(), it.value()) ? m_unsaved.erase(it) : std::next(it);
+
     const int chapter = m_pdf ? m_page : m_chapter;
-    QJsonObject annotations{{"position", QJsonObject{{"chapter", chapter}, {"offset", m_offset}}},
-                            {"bookmarks", m_bookmarks},
-                            {"highlights", m_highlights},
-                            {"vocabulary", m_vocabulary}};
+    QJsonObject annotations = m_savedAnnotations;
+    QJsonObject position = annotations["position"].toObject();
+    position["chapter"] = chapter;
+    position["offset"] = m_offset;
+    annotations["position"] = position;
+    annotations["bookmarks"] = m_bookmarks;
+    annotations["highlights"] = m_highlights;
+    annotations["vocabulary"] = m_vocabulary;
     if (m_fitTextChoice >= 0)
         annotations["fitText"] = m_fitTextChoice == 1;
-    m_library->saveAnnotations(m_id, annotations);
+    else
+        annotations.remove("fitText");
+    bool saved = false;
+    if (!m_notesLocked) {
+        saved = m_library->saveAnnotations(m_id, annotations);
+        if (saved) {
+            m_unsaved.remove(m_id);
+            m_savedAnnotations = annotations;
+        } else {
+            m_unsaved.insert(m_id, annotations);
+            setError(m_library->error());
+        }
+    }
+    // Progress lives in the library, which may still be writable.
     m_library->touch(m_id, progress());
+    return saved;
 }
 
 #include "reader.moc"

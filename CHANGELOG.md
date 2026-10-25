@@ -14,6 +14,11 @@ All notable changes to this project are documented here. The format follows
   settings, cache) is finished by the next run if one stopped half way, an
   empty `nell` directory no longer blocks it, and anything that can't be moved
   is reported on stderr.
+- A damaged `library.json`, book notes file, or `nell.conf`, or one written by a
+  newer Nell, is no longer overwritten: Nell reads what it can, leaves the file
+  as it is, and stops saving to it (`Library.storageProblems` lists them).
+  Fields Nell doesn't know are kept when it saves. Notes that fail to save are
+  kept and saved on the next try instead of being dropped when the book closes.
 
 ## [0.3.0] - 2026-10-24
 

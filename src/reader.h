@@ -70,6 +70,9 @@ class Reader : public QObject {
     Q_PROPERTY(QVariantList searchResults READ searchResults NOTIFY searchChanged)
     Q_PROPERTY(bool smallPrint READ smallPrint NOTIFY layoutChanged)
     Q_PROPERTY(bool fitText READ fitText WRITE setFitText NOTIFY fitTextChanged)
+    // The book's notes file can't be written safely (damaged, or from a
+    // newer Nell): marks shown are as saved, and changes aren't kept.
+    Q_PROPERTY(bool notesLocked READ notesLocked NOTIFY openChanged)
     Q_PROPERTY(int slice READ slice NOTIFY positionChanged)
     Q_PROPERTY(int sliceCount READ sliceCount NOTIFY positionChanged)
 
@@ -166,6 +169,7 @@ public:
     QString selectedHighlight() const { return m_selectedHighlight; }
     QVariantList searchResults() const { return m_searchResults; }
     bool smallPrint() const;
+    bool notesLocked() const { return m_notesLocked; }
     bool fitText() const { return m_fitText; }
     // The reader's choice for this book, kept with its notes; choosing what
     // detection would pick anyway goes back to following detection.
@@ -242,7 +246,8 @@ private:
     void checkpoint();
     void restore(const QJsonObject &snapshot);
     void scheduleSave();
-    void save();
+    // False when the notes couldn't be written; they're kept to try again.
+    bool save();
 
     Library *m_library;
     Preferences *m_preferences;
@@ -295,6 +300,12 @@ private:
     QString m_selectedHighlight;
     QVariantList m_searchResults;
     int m_searchChapter = -1, m_searchStart = -1, m_searchEnd = -1;
+    // The notes file as read, so fields this version doesn't know are kept.
+    QJsonObject m_savedAnnotations;
+    bool m_notesLocked = false;
+    // Notes that failed to save, by book, written on the next save and used
+    // in place of the file if the book is opened again first.
+    QHash<QString, QJsonObject> m_unsaved;
     QTimer m_saveTimer;
     QTimer m_layoutTimer;
     bool m_readOnly = false;

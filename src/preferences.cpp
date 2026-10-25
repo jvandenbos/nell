@@ -34,6 +34,16 @@ QString settingsFile(const QString &file) {
 
 Preferences::Preferences(Theme *theme, const QString &file, QObject *parent)
     : QObject(parent), m_settings(settingsFile(file), QSettings::IniFormat), m_theme(theme) {
+    // QSettings would rewrite a file it couldn't parse from only the keys it
+    // understood, so a damaged or newer one is read but never written.
+    if (m_settings.status() != QSettings::NoError) {
+        m_writable = false;
+        m_storageProblem = tr("%1 is damaged, so Nell is leaving it as it is and not saving settings.")
+                               .arg(m_settings.fileName());
+    } else if (m_settings.value("version", FormatVersion).toInt() > FormatVersion) {
+        m_writable = false;
+        m_storageProblem = tr("%1 was written by a newer Nell, so this one doesn't save settings.").arg(m_settings.fileName());
+    }
     m_readingTheme = m_settings.value("reading/theme", "original").toString();
     if (!readingThemes().contains(m_readingTheme))
         m_readingTheme = "original";
@@ -75,7 +85,7 @@ void Preferences::setReadingTheme(const QString &key) {
     if (key == m_readingTheme || !readingThemes().contains(key))
         return;
     m_readingTheme = key;
-    m_settings.setValue("reading/theme", key);
+    store("reading/theme", key);
     emit colorsChanged();
 }
 
@@ -99,7 +109,7 @@ void Preferences::setFontFamily(const QString &family) {
     if (family == m_fontFamily)
         return;
     m_fontFamily = family;
-    m_settings.setValue("reading/font", family);
+    store("reading/font", family);
     emit layoutChanged();
 }
 
@@ -108,7 +118,7 @@ void Preferences::setFontSize(int size) {
     if (size == m_fontSize)
         return;
     m_fontSize = size;
-    m_settings.setValue("reading/fontSize", size);
+    store("reading/fontSize", size);
     emit layoutChanged();
 }
 
@@ -117,7 +127,7 @@ void Preferences::setLineSpacing(double spacing) {
     if (qFuzzyCompare(spacing, m_lineSpacing))
         return;
     m_lineSpacing = spacing;
-    m_settings.setValue("reading/lineSpacing", spacing);
+    store("reading/lineSpacing", spacing);
     emit layoutChanged();
 }
 
@@ -125,7 +135,7 @@ void Preferences::setJustify(bool justify) {
     if (justify == m_justify)
         return;
     m_justify = justify;
-    m_settings.setValue("reading/justify", justify);
+    store("reading/justify", justify);
     emit layoutChanged();
 }
 
@@ -134,7 +144,7 @@ void Preferences::setMargins(int margins) {
     if (margins == m_margins)
         return;
     m_margins = margins;
-    m_settings.setValue("reading/margins", margins);
+    store("reading/margins", margins);
     emit layoutChanged();
 }
 
@@ -142,7 +152,7 @@ void Preferences::setSpread(bool spread) {
     if (spread == m_spread)
         return;
     m_spread = spread;
-    m_settings.setValue("reading/spread", spread);
+    store("reading/spread", spread);
     emit layoutChanged();
 }
 
@@ -150,7 +160,7 @@ void Preferences::setLibrarySort(const QString &sort) {
     if (sort == m_librarySort)
         return;
     m_librarySort = sort;
-    m_settings.setValue("library/sort", sort);
+    store("library/sort", sort);
     emit librarySortChanged();
 }
 
@@ -158,12 +168,29 @@ void Preferences::setInfoMode(int mode) {
     if (mode == m_infoMode)
         return;
     m_infoMode = mode;
-    m_settings.setValue("reading/infoMode", mode);
+    store("reading/infoMode", mode);
     emit infoModeChanged();
 }
 
 void Preferences::learnReadingSpeed(double charactersPerSecond) {
     // A slow moving average: one skimmed page shouldn't swing the estimate.
     m_readingSpeed = qBound(3.0, m_readingSpeed * 0.85 + charactersPerSecond * 0.15, 200.0);
-    m_settings.setValue("reading/speed", m_readingSpeed);
+    store("reading/speed", m_readingSpeed);
+}
+
+void Preferences::store(const QString &key, const QVariant &value) {
+    if (!m_writable)
+        return;
+    m_settings.setValue(key, value);
+    m_settings.setValue("version", FormatVersion);
+    m_settings.sync();
+    if (m_settings.status() != QSettings::NoError)
+        setStorageProblem(tr("Could not save settings in %1.").arg(m_settings.fileName()));
+}
+
+void Preferences::setStorageProblem(const QString &problem) {
+    if (problem == m_storageProblem)
+        return;
+    m_storageProblem = problem;
+    emit storageProblemChanged();
 }

@@ -409,14 +409,14 @@ private slots:
         QVERIFY(!reader.fitText());
         QCOMPARE(reader.sliceCount(), 1);
         reader.close();
-        QVERIFY(!library.annotations(small)["fitText"].toBool(true));
+        QVERIFY(!library.annotations(small).object["fitText"].toBool(true));
         QVERIFY(reader.openBook(small));
         reader.setGeometry(1200, 650, 1, 0);
         QVERIFY(!reader.fitText());
         reader.setFitText(true);
         QVERIFY(reader.fitText());
         reader.close();
-        QVERIFY(!library.annotations(small).contains("fitText"));
+        QVERIFY(!library.annotations(small).object.contains("fitText"));
     }
 
     void fitTextLeavesOutRunningHeadsAndFeet()
@@ -445,6 +445,135 @@ private slots:
             reader.next();
         QCOMPARE(reader.page(), 0);
         QCOMPARE(wordAt(649), QString("Line"));
+    }
+
+    void damagedOrNewerNotesAreNeverOverwritten()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        const QString id = library.add(makeEpub(dir.path()));
+        const QString path = dir.path() + "/data/books/" + id + ".json";
+        for (const QByteArray &contents : {QByteArray("{\"version\": 1, \"highlights\": [ oops"),
+                                           QByteArray("{\"version\": 2, \"position\": {\"chapter\": 1}, \"pins\": []}")}) {
+            write(path, contents);
+            {
+                Reader reader(&library, &preferences);
+                QVERIFY(reader.openBook(id));
+                reader.setGeometry(400, 500, 1, 0);
+                QVERIFY(reader.notesLocked());
+                reader.next();
+                reader.toggleBookmark();
+                reader.close();
+            }
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QCOMPARE(file.readAll(), contents);
+        }
+        QCOMPARE(library.storageProblems().size(), 2);
+    }
+
+    void unknownFieldsSurviveASave()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        const QString id = library.add(makeEpub(dir.path()));
+        QVERIFY(Library::writeJson(dir.path() + "/data/books/" + id + ".json",
+                                   QJsonObject{{"version", 1},
+                                               {"pins", QJsonArray{1, 2}},
+                                               {"highlights", QJsonArray{QJsonObject{{"id", "h1"}, {"chapter", 0}, {"start", 0},
+                                                                                     {"end", 7}, {"color", "blue"}, {"stars", 3}}}}}));
+        {
+            Reader reader(&library, &preferences);
+            QVERIFY(reader.openBook(id));
+            reader.setGeometry(400, 500, 1, 0);
+            QVERIFY(!reader.notesLocked());
+            reader.toggleBookmark();
+        }
+        const QJsonObject saved = library.annotations(id).object;
+        QCOMPARE(saved["pins"].toArray(), (QJsonArray{1, 2}));
+        QCOMPARE(saved["highlights"].toArray()[0].toObject()["stars"].toInt(), 3);
+        QCOMPARE(saved["bookmarks"].toArray().size(), 1);
+
+        // The library keeps fields it doesn't know too.
+        QJsonObject object = Library::readStore(dir.path() + "/data/library.json").object;
+        object["shelves"] = QJsonArray{"Read later"};
+        QVERIFY(Library::writeJson(dir.path() + "/data/library.json", object));
+        Library again(dir.path() + "/data", dir.path() + "/cache");
+        QVERIFY(!again.add(makePdf(dir.path() + "/paper.pdf", 1)).isEmpty());
+        QCOMPARE(Library::readStore(dir.path() + "/data/library.json").object["shelves"].toArray(), (QJsonArray{"Read later"}));
+    }
+
+    void damagedOrNewerLibraryIsOnlyRead()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.path() + "/data/library.json";
+        const QString pdf = makePdf(dir.path() + "/paper.pdf", 1);
+        for (const QByteArray &contents :
+             {QByteArray("{\"version\": 1, \"books\": [{\"id\": \"abc\""),
+              QByteArray("{\"version\": 2, \"books\": [{\"id\": \"abc\", \"title\": \"Kept\"}]}")}) {
+            write(path, contents);
+            Library library(dir.path() + "/data", dir.path() + "/cache");
+            QCOMPARE(library.storageProblems().size(), 1);
+            QVERIFY(library.add(pdf).isEmpty());
+            QVERIFY(!library.error().isEmpty());
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QCOMPARE(file.readAll(), contents);
+        }
+        // A newer library is still shown.
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        QCOMPARE(library.books().value(0).toMap()["title"].toString(), QString("Kept"));
+    }
+
+    void damagedOrNewerSettingsAreOnlyRead()
+    {
+        QTemporaryDir dir;
+        const QString path = dir.path() + "/nell.conf";
+        for (const QByteArray &contents : {QByteArray("[reading\nfontSize=24\n"),
+                                           QByteArray("[General]\nversion=2\n\n[reading]\nfontSize=24\n")}) {
+            write(path, contents);
+            {
+                Preferences preferences(nullptr, path);
+                QVERIFY(!preferences.storageProblem().isEmpty());
+                preferences.setFontSize(30);
+                preferences.learnReadingSpeed(50);
+            }
+            QFile file(path);
+            QVERIFY(file.open(QIODevice::ReadOnly));
+            QCOMPARE(file.readAll(), contents);
+        }
+        write(path, "[reading]\nfontSize=24\n");
+        Preferences preferences(nullptr, path);
+        QVERIFY(preferences.storageProblem().isEmpty());
+        QCOMPARE(preferences.fontSize(), 24);
+    }
+
+    void notesThatFailToSaveAreKept()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        const QString id = library.add(makeEpub(dir.path()));
+        const QString books = dir.path() + "/data/books";
+        QVERIFY(QDir().mkpath(books));
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(id));
+        reader.setGeometry(400, 500, 1, 0);
+        QVERIFY(QFile::setPermissions(books, QFile::ReadOwner | QFile::ExeOwner));
+        reader.toggleBookmark();
+        reader.close();
+        QVERIFY(!QFile::exists(books + "/" + id + ".json"));
+        QVERIFY(!library.error().isEmpty());
+
+        // Opened again, the bookmark is there, and saved once it can be.
+        QVERIFY(QFile::setPermissions(books, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        QVERIFY(reader.openBook(id));
+        reader.setGeometry(400, 500, 1, 0);
+        QCOMPARE(reader.bookmarks().size(), 1);
+        reader.close();
+        QCOMPARE(library.annotations(id).object["bookmarks"].toArray().size(), 1);
     }
 
     void quireDataMovesToNell()

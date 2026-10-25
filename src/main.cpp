@@ -78,6 +78,10 @@ int main(int argc, char *argv[]) {
     Theme theme;
     Preferences preferences(&theme);
     Library library;
+    // One list of storage problems for the window to show.
+    library.reportStorageProblem(preferences.storageProblem());
+    QObject::connect(&preferences, &Preferences::storageProblemChanged, &library,
+                     [&] { library.reportStorageProblem(preferences.storageProblem()); });
     Reader reader(&library, &preferences);
     Dictionary dictionary;
     PortalFilePicker picker;
