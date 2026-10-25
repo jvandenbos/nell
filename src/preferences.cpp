@@ -50,7 +50,8 @@ Preferences::Preferences(Theme *theme, const QString &file, QObject *parent)
     m_fontSize = qBound(12, m_settings.value("reading/fontSize", 20).toInt(), 44);
     // Proportional to the font's own line height, which already has leading.
     m_lineSpacing = qBound(1.0, m_settings.value("reading/lineSpacing", 1.1).toDouble(), 2.0);
-    m_justify = m_settings.value("reading/justify", true).toBool();
+    // Ragged right by default: justified narrow columns open rivers.
+    m_justify = m_settings.value("reading/justify", false).toBool();
     m_margins = qBound(0, m_settings.value("reading/margins", 1).toInt(), 2);
     m_spread = m_settings.value("reading/spread", true).toBool();
     m_hideRunningHeads = m_settings.value("reading/hideRunningHeads", true).toBool();
@@ -58,6 +59,8 @@ Preferences::Preferences(Theme *theme, const QString &file, QObject *parent)
     m_infoMode = m_settings.value("reading/infoMode", 0).toInt();
     // About 250 words a minute, until the reader shows us their own pace.
     m_readingSpeed = qBound(3.0, m_settings.value("reading/speed", 22.0).toDouble(), 200.0);
+    m_highlightColor = m_settings.value("reading/highlightColor", "yellow").toString();
+    m_reduceMotion = m_settings.value("ui/reduceMotion", false).toBool();
 
     const QStringList installed = QFontDatabase::families();
     for (const char *family : {"Literata", "Charter", "Georgia", "EB Garamond", "Crimson Pro", "Noto Serif", "C059",
@@ -102,6 +105,14 @@ QString Preferences::textColor() const {
         if (m_readingTheme == QLatin1String(theme.key))
             return theme.text ? QString::fromLatin1(theme.text) : m_theme ? m_theme->foreground() : "#c0caf5";
     return "#1d1d1f";
+}
+
+QStringList Preferences::themeColors(const QString &key) const {
+    for (const auto &theme : readingThemeTable)
+        if (key == QLatin1String(theme.key))
+            return theme.page ? QStringList{QString::fromLatin1(theme.page), QString::fromLatin1(theme.text)}
+                              : QStringList{m_theme ? m_theme->background() : "#1a1b26", m_theme ? m_theme->foreground() : "#c0caf5"};
+    return {};
 }
 
 bool Preferences::darkPage() const { return QColor(pageColor()).lightnessF() < 0.5; }
@@ -202,4 +213,20 @@ void Preferences::setStorageProblem(const QString &problem) {
         return;
     m_storageProblem = problem;
     emit storageProblemChanged();
+}
+
+void Preferences::setHighlightColor(const QString &color) {
+    if (color == m_highlightColor || color.isEmpty())
+        return;
+    m_highlightColor = color;
+    m_settings.setValue("reading/highlightColor", color);
+    emit highlightColorChanged();
+}
+
+void Preferences::setReduceMotion(bool reduce) {
+    if (reduce == m_reduceMotion)
+        return;
+    m_reduceMotion = reduce;
+    m_settings.setValue("ui/reduceMotion", reduce);
+    emit reduceMotionChanged();
 }

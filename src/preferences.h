@@ -31,6 +31,8 @@ class Preferences : public QObject {
     // Why the settings file isn't being written, if it isn't: it's damaged,
     // a newer Nell wrote it, or saving failed. Empty when all is well.
     Q_PROPERTY(QString storageProblem READ storageProblem NOTIFY storageProblemChanged)
+    Q_PROPERTY(QString highlightColor READ highlightColor WRITE setHighlightColor NOTIFY highlightColorChanged)
+    Q_PROPERTY(bool reduceMotion READ reduceMotion WRITE setReduceMotion NOTIFY reduceMotionChanged)
 
 public:
     // The settings file's own format version, kept as `version` in it.
@@ -44,6 +46,8 @@ public:
     QString textColor() const;
     bool darkPage() const;
     QStringList readingThemes() const;
+    // A theme's [page, text] colors, for drawing its swatch.
+    Q_INVOKABLE QStringList themeColors(const QString &key) const;
 
     QString fontFamily() const { return m_fontFamily; }
     void setFontFamily(const QString &family);
@@ -66,6 +70,12 @@ public:
     void setLibrarySort(const QString &sort);
     int infoMode() const { return m_infoMode; }
     void setInfoMode(int mode);
+    // The color H highlights in: the last one picked from the selection bar.
+    QString highlightColor() const { return m_highlightColor; }
+    void setHighlightColor(const QString &color);
+    // No sliding page turns or fading chrome.
+    bool reduceMotion() const { return m_reduceMotion; }
+    void setReduceMotion(bool reduce);
 
     // Characters read per second, learned from page turns like Kindle does,
     // so "minutes left" is about this reader rather than an average one.
@@ -80,6 +90,8 @@ signals:
     void librarySortChanged();
     void infoModeChanged();
     void storageProblemChanged();
+    void highlightColorChanged();
+    void reduceMotionChanged();
 
 private:
     // Every write goes through here, so a file that mustn't be written isn't.
@@ -102,4 +114,6 @@ private:
     double m_readingSpeed;
     bool m_writable = true;
     QString m_storageProblem;
+    QString m_highlightColor;
+    bool m_reduceMotion;
 };

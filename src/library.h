@@ -69,6 +69,9 @@ public:
     Q_INVOKABLE QVariantMap book(const QString &id) const;
     Q_INVOKABLE QVariantList sorted(const QString &sort, const QString &filter) const;
     Q_INVOKABLE void clearError();
+    // Points a book at a file the reader found for it, if that file is the
+    // same book (same contents); otherwise sets error and changes nothing.
+    Q_INVOKABLE bool relocate(const QString &id, const QString &pathOrUrl);
 
     void touch(const QString &id, double progress);
     // Whether the book's file still holds what was added: its size and time

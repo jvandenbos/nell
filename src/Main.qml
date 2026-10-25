@@ -7,22 +7,41 @@ ApplicationWindow {
     id: win
     width: 1280
     height: 820
-    minimumWidth: 640
+    // Half of a 1080p tile, or less: every layout below adapts to it.
+    minimumWidth: 480
     minimumHeight: 480
     visible: true
     title: reader.open ? reader.title : "Nell"
-    color: reader.open ? prefs.pageColor : "#0e0e10"
+    color: Tokens.surface
 
-    Material.theme: Material.Dark
+    // Light or dark with the surface: the library follows the desktop's
+    // theme, the reader its reading theme.
+    Material.theme: Tokens.dark ? Material.Dark : Material.Light
     Material.accent: theme.accent
+    Material.background: Tokens.surfaceRaised
+    Material.foreground: Tokens.text
     Material.roundedScale: theme.radius
 
-    property bool helpVisible: false
+    readonly property bool helpVisible: help.opened
     readonly property bool reading: reader.open
+    // Typing in a field: unmodified letter shortcuts stand down so the
+    // letters reach the field.
+    readonly property bool textEntry: activeFocusItem !== null && activeFocusItem.cursorPosition !== undefined
+    // The page or the shelf has the keyboard, not a panel, field, or button.
+    readonly property bool surfaceFocused: activeFocusItem !== null
+                                           && (activeFocusItem.objectName === "page" || activeFocusItem.objectName === "shelf")
+    // Set while the file chooser is out to find a moved book, not add new ones.
+    property string locateId: ""
 
     function openBook(id) {
+        const book = library.book(id)
+        if (book.missing) {
+            toast.show(qsTr("“%1” isn't where it was.").arg(book.title),
+                       { error: true, actionText: qsTr("Locate File…"), action: () => win.locate(id) })
+            return
+        }
         if (!reader.openBook(id))
-            toast.show(reader.error)
+            toast.show(reader.error, { error: true })
     }
 
     function closeBook() {
@@ -30,42 +49,84 @@ ApplicationWindow {
         libraryView.focusGrid()
     }
 
+    function pickBooks() {
+        locateId = ""
+        picker.openBooks()
+    }
+
+    function locate(id) {
+        locateId = id
+        picker.openBooks()
+    }
+
     function addBooks(urls) {
         const before = library.books.length
-        const added = library.addUrls(urls)
-        if (library.error.length)
-            toast.show(library.error)
-        // One new book dropped or picked is one the reader wants to read.
-        if (urls.length === 1 && added === 1 && library.books.length > before)
-            openBook(library.books[0].id)
+        let added = 0
+        let lastId = ""
+        const errors = []
+        for (const url of urls) {
+            const id = library.add(url.toString())
+            if (id.length) {
+                ++added
+                lastId = id
+            } else if (library.error.length) {
+                errors.push(library.error)
+            }
+        }
+        library.clearError()
+        const fresh = library.books.length - before
+        if (errors.length === 0) {
+            // One new book dropped or picked is one the reader wants to read.
+            if (urls.length === 1 && fresh === 1)
+                openBook(lastId)
+            else if (fresh > 0)
+                toast.show(qsTr("Added %n books", "", fresh))
+            else if (added > 0)
+                toast.show(added === 1 ? qsTr("That book is already in your library")
+                                       : qsTr("Those books are already in your library"))
+        } else if (added === 0 && errors.length === 1) {
+            toast.show(errors[0], { error: true })
+        } else {
+            toast.show(qsTr("Added %n books", "", fresh) + "; " + qsTr("%n failed", "", errors.length),
+                       { error: true, details: errors })
+        }
     }
 
     // Global keys; the reader and library each add their own while shown.
-    Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; onActivated: win.helpVisible = !win.helpVisible }
-    Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; onActivated: Qt.quit() }
-    Shortcut { sequences: [StandardKey.Open, "Ctrl+O"]; context: Qt.ApplicationShortcut; onActivated: picker.openBooks() }
-    Shortcut {
-        sequences: ["F11", "F"]
-        context: Qt.ApplicationShortcut
-        onActivated: win.visibility = win.visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen
-    }
-    Shortcut {
-        sequence: "Esc"
-        context: Qt.ApplicationShortcut
-        enabled: win.helpVisible
-        onActivated: win.helpVisible = false
+    // Bare letters only act on the page or shelf, never while typing.
+    Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; enabled: !win.textEntry; onActivated: help.opened ? help.close() : help.show(win.activeFocusItem) }
+    Shortcut { sequences: [StandardKey.Quit, "Ctrl+Q"]; context: Qt.ApplicationShortcut; onActivated: Qt.quit() }
+    Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; enabled: win.surfaceFocused; onActivated: Qt.quit() }
+    Shortcut { sequences: [StandardKey.Open, "Ctrl+O"]; context: Qt.ApplicationShortcut; onActivated: win.pickBooks() }
+    Shortcut { sequence: "F11"; context: Qt.ApplicationShortcut; onActivated: win.toggleFullScreen() }
+    Shortcut { sequence: "F"; context: Qt.ApplicationShortcut; enabled: win.surfaceFocused; onActivated: win.toggleFullScreen() }
+
+    function toggleFullScreen() {
+        visibility = visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen
     }
 
     Connections {
         target: picker
-        function onBooksSelected(urls) { win.addBooks(urls) }
+        function onBooksSelected(urls) {
+            if (win.locateId.length && urls.length) {
+                const id = win.locateId
+                win.locateId = ""
+                if (library.relocate(id, urls[0].toString()))
+                    toast.show(qsTr("Found “%1”").arg(library.book(id).title))
+                else
+                    toast.show(library.error, { error: true })
+                library.clearError()
+                return
+            }
+            win.addBooks(urls)
+        }
         function onNotesTargetSelected(url) {
             if (reader.exportNotes(url))
                 toast.show(qsTr("Notes exported to %1").arg(decodeURIComponent(url.toString().replace("file://", ""))))
             else
-                toast.show(reader.error)
+                toast.show(reader.error, { error: true })
         }
-        function onFailed(message) { toast.show(message) }
+        function onFailed(message) { toast.show(message, { error: true }) }
     }
 
     // Right-to-left languages mirror the window; the Translator sets the
@@ -81,6 +142,7 @@ ApplicationWindow {
             visible: !win.reading
             enabled: visible
             onOpenRequested: id => win.openBook(id)
+            onLocateRequested: id => win.locate(id)
         }
 
         Loader {
@@ -89,6 +151,8 @@ ApplicationWindow {
             sourceComponent: ReaderView {
                 onCloseRequested: win.closeBook()
                 onMessage: text => toast.show(text)
+                onFailure: text => toast.show(text, { error: true })
+                onUndoable: text => toast.show(text, { actionText: qsTr("Undo"), action: () => reader.undo(), timeout: 6000 })
             }
         }
 
@@ -108,29 +172,23 @@ ApplicationWindow {
                 color: "transparent"
                 radius: theme.radius
                 border.width: 2
-                border.color: theme.accent
+                border.color: Tokens.accent
                 Rectangle {
                     anchors.fill: parent
                     radius: theme.radius
-                    color: theme.accent
+                    color: Tokens.accent
                     opacity: 0.08
                 }
                 Label {
                     anchors.centerIn: parent
                     text: qsTr("Drop books to add them to your library")
                     font.pixelSize: 20
-                    color: theme.accent
+                    color: Tokens.accentText
                 }
             }
         }
-
-        HelpOverlay {
-            anchors.fill: parent
-            visible: win.helpVisible
-            reading: win.reading
-            onDismissed: win.helpVisible = false
-        }
-
-        Toast { id: toast }
     }
+
+    HelpOverlay { id: help; reading: win.reading }
+    Toast { id: toast }
 }

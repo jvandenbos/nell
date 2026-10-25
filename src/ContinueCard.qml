@@ -3,27 +3,40 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 
-// A book in progress: cover, where you are, and one click back into it.
-Rectangle {
+// A book in progress: cover, where you are, and one click (or Enter, or
+// Space) back into it.
+AbstractButton {
     id: card
     property var book
-    signal open()
 
-    height: 176
-    radius: theme.radius
-    color: hover.hovered ? "#1d1d22" : "#17171b"
-    border.width: 1
-    border.color: "#26262c"
-    Behavior on color { ColorAnimation { duration: 120 } }
+    implicitHeight: 176
+    focusPolicy: Qt.StrongFocus
+    hoverEnabled: true
+    text: book.title
+    Accessible.role: Accessible.Button
+    Accessible.name: qsTr("Continue reading %1").arg(book.title)
+    Accessible.description: qsTr("%1% read").arg(Math.round(book.progress * 100).toLocaleString(Qt.locale(), 'f', 0))
+    Keys.onReturnPressed: card.clicked()
+    Keys.onEnterPressed: card.clicked()
 
-    RowLayout {
-        anchors.fill: parent
-        anchors.margins: 16
+    HoverHandler { cursorShape: Qt.PointingHandCursor }
+
+    background: Rectangle {
+        radius: theme.radius
+        color: card.hovered ? Tokens.hover : Tokens.surfaceRaised
+        border.width: 1
+        border.color: Tokens.border
+        Behavior on color { ColorAnimation { duration: Tokens.duration(120) } }
+        FocusRing { control: card; controlRadius: theme.radius }
+    }
+
+    contentItem: RowLayout {
         spacing: 16
 
         BookCover {
-            Layout.preferredWidth: 96
-            Layout.preferredHeight: 144
+            Layout.preferredWidth: card.width < 360 ? 72 : 96
+            Layout.preferredHeight: card.width < 360 ? 108 : 144
+            Layout.alignment: Qt.AlignVCenter
             source: card.book.cover
             title: card.book.title
             author: card.book.author
@@ -39,6 +52,7 @@ Rectangle {
                 text: card.book.title
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
+                color: Tokens.text
                 wrapMode: Text.Wrap
                 maximumLineCount: 2
                 elide: Text.ElideRight
@@ -46,30 +60,28 @@ Rectangle {
             Label {
                 Layout.fillWidth: true
                 text: card.book.author
-                color: "#a0a0a8"
+                color: Tokens.textSecondary
                 elide: Text.ElideRight
             }
             Item { Layout.fillHeight: true }
             Label {
                 text: qsTr("%1% read").arg(Math.round(card.book.progress * 100).toLocaleString(Qt.locale(), 'f', 0))
-                color: "#a0a0a8"
+                color: Tokens.textSecondary
                 font.pixelSize: 12
             }
             Rectangle {
                 Layout.fillWidth: true
                 height: 4
                 radius: 2
-                color: "#2c2c33"
+                color: Tokens.surfaceSunken
                 Rectangle {
                     width: parent.width * card.book.progress
                     height: parent.height
                     radius: 2
-                    color: theme.accent
+                    color: Tokens.accent
                 }
             }
         }
     }
-
-    HoverHandler { id: hover; cursorShape: Qt.PointingHandCursor }
-    TapHandler { onTapped: card.open() }
+    padding: 16
 }

@@ -139,10 +139,12 @@ version, **1**, written with the first setting saved; a file without it is
 version 1. A file `QSettings` can't parse, or one with a higher `version`, is
 read but never written. The keys are `reading/theme`, `reading/font`,
 `reading/fontSize` (12 to 44), `reading/lineSpacing` (1.0 to 2.0),
-`reading/margins` (0 to 2), `reading/justify`, `reading/spread`,
-`reading/hideRunningHeads` (fit text leaves out running heads; default true),
-`reading/infoMode`, `reading/speed` (the learned reading speed), and
-`library/sort`.
+`reading/margins` (0 to 2), `reading/justify` (off unless set),
+`reading/spread`, `reading/hideRunningHeads` (fit text leaves out running
+heads; default true), `reading/infoMode` (0 to 4: chapter time, book time,
+pages left in chapter, location or page, percent), `reading/speed` (the
+learned reading speed), `reading/highlightColor` (what H highlights in: the
+last color picked), `ui/reduceMotion`, and `library/sort`.
 
 ## `~/.cache/nell/`
 

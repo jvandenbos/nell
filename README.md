@@ -32,9 +32,11 @@ looked up, and your highlights and notes exportable as Markdown.
   Everything undoes.
 - **Finding.** Contents, bookmarks, notes, and words in one panel; full-text
   search of the whole book.
-- **Knowing where you are.** Click the bottom-left corner to cycle between time
-  left in the chapter, time left in the book, pages left in the chapter, and
-  Kindle-style locations.
+- **Knowing where you are.** The bottom-left corner shows one of five things —
+  time left in the chapter, time left in the book, pages left in the chapter,
+  the Kindle-style location (the page, in a PDF), or the percent read. Click it
+  to pick from a menu, or press `P` to cycle; `Ctrl+G` goes to a page or a
+  percentage.
 
 Nell follows the Omarchy accent and window rounding live, and the language set
 under Setup > Language (Danish, Dutch, English, French, German, and Spanish so
@@ -50,12 +52,15 @@ Press `?` in the app to see them all.
 | `←` `Shift+Space` `PgUp` | Previous page |
 | `]` `[` | Next or previous chapter |
 | `Home` `End` | Start or end of the book |
+| `Ctrl+G` | Go to a page or percent |
+| `P` | Change what the progress corner shows |
 | `T` | Contents, bookmarks, notes, and words |
 | `/` `Ctrl+F` | Search the book |
 | `A` | Appearance |
 | `Ctrl++` `Ctrl+−` | Bigger or smaller text |
 | `B` | Bookmark the page |
-| `H` / `N` / `D` | Highlight, note, or look up the selection |
+| `H` / `N` / `D` | Highlight (in the last color used), note, or look up the selection |
+| `Tab` | Show the controls and move through them |
 | `Ctrl+C` | Copy the selection |
 | `Ctrl+Z` `Ctrl+Shift+Z` | Undo or redo |
 | `Esc` | Close a panel, or back to the library |
@@ -67,7 +72,10 @@ Press `?` in the app to see them all.
 | `/` `Ctrl+F` | Find a book |
 | `Delete` | Remove the selected book from the library |
 | `F11` `F` | Full screen |
-| `Q` | Quit |
+| `Ctrl+Q` `Q` | Quit |
+
+Letter keys act on the page or the shelf only; while you type in a field they
+type, and while a panel is open the page stays put.
 
 ## Command line
 
