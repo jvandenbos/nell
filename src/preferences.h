@@ -25,6 +25,8 @@ class Preferences : public QObject {
     Q_PROPERTY(bool spread READ spread WRITE setSpread NOTIFY layoutChanged)
     Q_PROPERTY(QString librarySort READ librarySort WRITE setLibrarySort NOTIFY librarySortChanged)
     Q_PROPERTY(int infoMode READ infoMode WRITE setInfoMode NOTIFY infoModeChanged)
+    Q_PROPERTY(QString highlightColor READ highlightColor WRITE setHighlightColor NOTIFY highlightColorChanged)
+    Q_PROPERTY(bool reduceMotion READ reduceMotion WRITE setReduceMotion NOTIFY reduceMotionChanged)
 
 public:
     explicit Preferences(Theme *theme, const QString &file = {}, QObject *parent = nullptr);
@@ -35,6 +37,8 @@ public:
     QString textColor() const;
     bool darkPage() const;
     QStringList readingThemes() const;
+    // A theme's [page, text] colors, for drawing its swatch.
+    Q_INVOKABLE QStringList themeColors(const QString &key) const;
 
     QString fontFamily() const { return m_fontFamily; }
     void setFontFamily(const QString &family);
@@ -55,6 +59,12 @@ public:
     void setLibrarySort(const QString &sort);
     int infoMode() const { return m_infoMode; }
     void setInfoMode(int mode);
+    // The color H highlights in: the last one picked from the selection bar.
+    QString highlightColor() const { return m_highlightColor; }
+    void setHighlightColor(const QString &color);
+    // No sliding page turns or fading chrome.
+    bool reduceMotion() const { return m_reduceMotion; }
+    void setReduceMotion(bool reduce);
 
     // Characters read per second, learned from page turns like Kindle does,
     // so "minutes left" is about this reader rather than an average one.
@@ -66,6 +76,8 @@ signals:
     void layoutChanged();
     void librarySortChanged();
     void infoModeChanged();
+    void highlightColorChanged();
+    void reduceMotionChanged();
 
 private:
     QSettings m_settings;
@@ -81,4 +93,6 @@ private:
     QString m_librarySort;
     int m_infoMode;
     double m_readingSpeed;
+    QString m_highlightColor;
+    bool m_reduceMotion;
 };

@@ -74,9 +74,11 @@ again brings its marks back.
 
 Qt `QSettings` INI. The keys are `reading/theme`, `reading/font`,
 `reading/fontSize` (12 to 44), `reading/lineSpacing` (1.0 to 2.0),
-`reading/margins` (0 to 2), `reading/justify`, `reading/spread`,
-`reading/infoMode`, `reading/speed` (the learned reading speed), and
-`library/sort`.
+`reading/margins` (0 to 2), `reading/justify` (off unless set),
+`reading/spread`, `reading/infoMode` (0 to 4: chapter time, book time, pages
+left in chapter, location or page, percent), `reading/speed` (the learned
+reading speed), `reading/highlightColor` (what H highlights in: the last color
+picked), `ui/reduceMotion`, and `library/sort`.
 
 ## `~/.cache/nell/`
 

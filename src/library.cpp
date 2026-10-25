@@ -239,6 +239,16 @@ QVariantList Library::sorted(const QString &sort, const QString &filter) const {
 
 void Library::clearError() { setError({}); }
 
+bool Library::relocate(const QString &id, const QString &pathOrUrl) {
+    setError({});
+    const QString path = localPath(pathOrUrl);
+    if (indexOf(id) < 0 || fileId(path) != id) {
+        setError(tr("%1 isn't the same book.").arg(QFileInfo(path).fileName()));
+        return false;
+    }
+    return add(path) == id;
+}
+
 void Library::touch(const QString &id, double progress) {
     const int index = indexOf(id);
     if (index < 0)
