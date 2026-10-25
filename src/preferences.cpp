@@ -28,7 +28,7 @@ const ReadingTheme readingThemeTable[] = {
 QString settingsFile(const QString &file) {
     if (!file.isEmpty())
         return file;
-    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/quire/quire.conf";
+    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/nell/nell.conf";
 }
 }
 

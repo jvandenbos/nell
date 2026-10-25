@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Quire
+Name=Nell
 GenericName=E-book Reader
 GenericName[da]=E-bogslæser
 GenericName[de]=E-Book-Reader
@@ -13,10 +13,10 @@ Comment[de]=EPUB- und PDF-Bücher lesen
 Comment[es]=Lee libros EPUB y PDF
 Comment[fr]=Lire des livres EPUB et PDF
 Comment[nl]=EPUB- en PDF-boeken lezen
-Exec=quire %f
-Icon=quire
+Exec=nell %f
+Icon=nell
 Terminal=false
 Categories=Office;Viewer;Literature;
 Keywords=ebook;epub;pdf;book;reader;kindle;
 MimeType=application/epub+zip;application/pdf;
-StartupWMClass=quire
+StartupWMClass=nell

@@ -1,4 +1,4 @@
-// quire — reads EPUB and PDF books, after Apple Books, with the best of Kindle.
+// nell — reads EPUB and PDF books, after Apple Books, with the best of Kindle.
 
 #include <QCommandLineParser>
 #include <QGuiApplication>
@@ -6,6 +6,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
+#include <QStandardPaths>
 #include <QUrl>
 #include <cstdio>
 
@@ -27,13 +28,16 @@ int main(int argc, char *argv[]) {
         qputenv("QT_QPA_PLATFORM", "offscreen");
 
     QGuiApplication app(argc, argv);
-    app.setApplicationName("quire");
-    app.setApplicationVersion(QUIRE_VERSION);
+    app.setApplicationName("nell");
+    app.setApplicationVersion(NELL_VERSION);
+    Library::adoptQuire(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation),
+                        QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation),
+                        QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation));
 
-    // Matches the window to quire.desktop, so the compositor (Wayland app_id)
+    // Matches the window to nell.desktop, so the compositor (Wayland app_id)
     // and the launcher pick up the installed icon.
-    app.setDesktopFileName("quire");
-    app.setWindowIcon(QIcon::fromTheme("quire"));
+    app.setDesktopFileName("nell");
+    app.setWindowIcon(QIcon::fromTheme("nell"));
 
     // Installed before anything is translated, and every qsTr() binding is
     // re-evaluated when the Omarchy language changes.
@@ -54,8 +58,8 @@ int main(int argc, char *argv[]) {
     args.process(arguments);
 
     QQuickStyle::setStyle("Material");
-    qmlRegisterType<PageView>("Quire", 1, 0, "PageView");
-    qmlRegisterUncreatableType<Reader>("Quire", 1, 0, "Reader", "The reader is provided by the app");
+    qmlRegisterType<PageView>("Nell", 1, 0, "PageView");
+    qmlRegisterUncreatableType<Reader>("Nell", 1, 0, "Reader", "The reader is provided by the app");
 
     Theme theme;
     Preferences preferences(&theme);

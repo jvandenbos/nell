@@ -42,7 +42,7 @@ void Dictionary::request(const QString &word) {
                                  QString::fromUtf8(QUrl::toPercentEncoding(word))));
     // Wikimedia asks every client to name itself.
     networkRequest.setHeader(QNetworkRequest::UserAgentHeader,
-                      QStringLiteral("Quire/%1 (Omarchy e-book reader)").arg(QCoreApplication::applicationVersion()));
+                      QStringLiteral("Nell/%1 (Omarchy e-book reader)").arg(QCoreApplication::applicationVersion()));
     networkRequest.setTransferTimeout(10000);
     m_reply = m_network.get(networkRequest);
     emit changed();

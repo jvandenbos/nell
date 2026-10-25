@@ -1,5 +1,6 @@
 #include <QDir>
 #include <QFile>
+#include <QJsonArray>
 #include <QPainter>
 #include <QPdfWriter>
 #include <QProcess>
@@ -14,7 +15,7 @@
 #include "theme.h"
 #include "translator.h"
 
-class QuireTests : public QObject {
+class NellTests : public QObject {
     Q_OBJECT
 
 private slots:
@@ -185,7 +186,7 @@ private slots:
     {
         QTemporaryDir dir;
         Library library(dir.path() + "/data", dir.path() + "/cache");
-        Preferences preferences(nullptr, dir.path() + "/quire.conf");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
         const QString id = library.add(makeEpub(dir.path()));
         int pages = 0, chapterTwo = 0;
         {
@@ -235,7 +236,7 @@ private slots:
     {
         QTemporaryDir dir;
         Library library(dir.path() + "/data", dir.path() + "/cache");
-        Preferences preferences(nullptr, dir.path() + "/quire.conf");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
         const QString id = library.add(makeEpub(dir.path()));
         {
             Reader reader(&library, &preferences);
@@ -279,7 +280,7 @@ private slots:
     {
         QTemporaryDir dir;
         Library library(dir.path() + "/data", dir.path() + "/cache");
-        Preferences preferences(nullptr, dir.path() + "/quire.conf");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
         Reader reader(&library, &preferences);
         QVERIFY(reader.openBook(library.add(makeEpub(dir.path()))));
         reader.setGeometry(400, 500, 1, 0);
@@ -297,7 +298,7 @@ private slots:
     {
         QTemporaryDir dir;
         Library library(dir.path() + "/data", dir.path() + "/cache");
-        Preferences preferences(nullptr, dir.path() + "/quire.conf");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
         const QString id = library.add(makePdf(dir.path() + "/paper.pdf", 3));
         QVERIFY2(!id.isEmpty(), qPrintable(library.error()));
         Reader reader(&library, &preferences);
@@ -331,7 +332,7 @@ private slots:
     {
         QTemporaryDir dir;
         Library library(dir.path() + "/data", dir.path() + "/cache");
-        Preferences preferences(nullptr, dir.path() + "/quire.conf");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
         const QString small = library.add(makeTextPdf(dir.path() + "/small.pdf", 7, 2));
         const QString large = library.add(makeTextPdf(dir.path() + "/large.pdf", 20, 2));
         QVERIFY2(!small.isEmpty() && !large.isEmpty(), qPrintable(library.error()));
@@ -421,7 +422,7 @@ private slots:
     {
         QTemporaryDir dir;
         Library library(dir.path() + "/data", dir.path() + "/cache");
-        Preferences preferences(nullptr, dir.path() + "/quire.conf");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
         const QString id = library.add(makeTextPdf(dir.path() + "/guide.pdf", 7, 4, true));
         QVERIFY2(!id.isEmpty(), qPrintable(library.error()));
         Reader reader(&library, &preferences);
@@ -445,24 +446,54 @@ private slots:
         QCOMPARE(wordAt(649), QString("Line"));
     }
 
+    void quireDataMovesToNell()
+    {
+        QTemporaryDir dir;
+        const QString data = dir.path() + "/data", config = dir.path() + "/config", cache = dir.path() + "/cache";
+        QDir().mkpath(data + "/quire/books");
+        QDir().mkpath(config + "/quire");
+        QDir().mkpath(cache + "/quire/covers");
+        const QString cover = cache + "/quire/covers/abc.jpg";
+        QFile(cover).open(QIODevice::WriteOnly);
+        QFile(config + "/quire/quire.conf").open(QIODevice::WriteOnly);
+        QFile(data + "/quire/books/abc.json").open(QIODevice::WriteOnly);
+        QVERIFY(Library::writeJson(data + "/quire/library.json",
+                                   QJsonObject{{"version", 1}, {"books", QJsonArray{QJsonObject{{"id", "abc"}, {"cover", cover}}}}}));
+
+        Library::adoptQuire(data, config, cache);
+        QVERIFY(!QDir(data + "/quire").exists() && !QDir(config + "/quire").exists() && !QDir(cache + "/quire").exists());
+        QVERIFY(QFile::exists(data + "/nell/books/abc.json"));
+        QVERIFY(QFile::exists(config + "/nell/nell.conf"));
+        Library library(data + "/nell", cache + "/nell");
+        const QString moved = library.books().value(0).toMap()["cover"].toString();
+        QCOMPARE(moved, cache + "/nell/covers/abc.jpg");
+        QVERIFY(QFile::exists(moved));
+
+        // Once Nell has its own, a leftover Quire directory is left alone.
+        QDir().mkpath(data + "/quire");
+        Library::adoptQuire(data, config, cache);
+        QVERIFY(QDir(data + "/quire").exists());
+        QVERIFY(QFile::exists(data + "/nell/library.json"));
+    }
+
     void readingSpeedIsLearnedSlowly()
     {
         QTemporaryDir dir;
-        Preferences preferences(nullptr, dir.path() + "/quire.conf");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
         const double start = preferences.readingSpeed();
         preferences.learnReadingSpeed(start * 10);
         QVERIFY(preferences.readingSpeed() > start);
         QVERIFY(preferences.readingSpeed() < start * 3);
         preferences.learnReadingSpeed(100000);
         QVERIFY(preferences.readingSpeed() <= 200);
-        Preferences again(nullptr, dir.path() + "/quire.conf");
+        Preferences again(nullptr, dir.path() + "/nell.conf");
         QCOMPARE(again.readingSpeed(), preferences.readingSpeed());
     }
 
     void readingThemesHaveColors()
     {
         QTemporaryDir dir;
-        Preferences preferences(nullptr, dir.path() + "/quire.conf");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
         QCOMPARE(preferences.pageColor(), QString("#ffffff"));
         QVERIFY(!preferences.darkPage());
         preferences.setReadingTheme("night");
@@ -594,5 +625,5 @@ private:
     }
 };
 
-QTEST_MAIN(QuireTests)
-#include "quire_tests.moc"
+QTEST_MAIN(NellTests)
+#include "nell_tests.moc"

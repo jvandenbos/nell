@@ -1,6 +1,6 @@
 # File formats
 
-Quire keeps everything as JSON or INI under the XDG directories. Each JSON file
+Nell keeps everything as JSON or INI under the XDG directories. Each JSON file
 has a top-level integer `version`, the *format* version, which is separate from
 the app's semver. It goes up only when an existing reader would misread the new
 shape. Adding an optional field doesn't change it. The current format version
@@ -8,7 +8,7 @@ is **1** (`Library::FormatVersion`).
 
 Timestamps are ISO 8601 strings in UTC (`2026-10-23T13:55:02Z`).
 
-## `~/.local/share/quire/library.json`
+## `~/.local/share/nell/library.json`
 
 ```json
 {
@@ -21,7 +21,7 @@ Timestamps are ISO 8601 strings in UTC (`2026-10-23T13:55:02Z`).
       "title": "Alice's Adventures in Wonderland",
       "author": "Lewis Carroll",
       "language": "en",
-      "cover": "/home/me/.cache/quire/covers/3f9c0a1b2d4e5f60.jpg",
+      "cover": "/home/me/.cache/nell/covers/3f9c0a1b2d4e5f60.jpg",
       "progress": 0.42,
       "added": "2026-10-23T13:55:02Z",
       "opened": "2026-10-23T14:20:11Z",
@@ -37,7 +37,7 @@ Timestamps are ISO 8601 strings in UTC (`2026-10-23T13:55:02Z`).
 - `progress`: 0 to 1. `finished` is set once a book reaches the end and stays set.
 - `opened` is empty until the book is first read.
 
-## `~/.local/share/quire/books/<id>.json`
+## `~/.local/share/nell/books/<id>.json`
 
 ```json
 {
@@ -70,7 +70,7 @@ and overrides small-print detection. It's left out while detection decides.
 Removing a book from the library leaves this file in place, so adding the book
 again brings its marks back.
 
-## `~/.config/quire/quire.conf`
+## `~/.config/nell/nell.conf`
 
 Qt `QSettings` INI. The keys are `reading/theme`, `reading/font`,
 `reading/fontSize` (12 to 44), `reading/lineSpacing` (1.0 to 2.0),
@@ -78,7 +78,7 @@ Qt `QSettings` INI. The keys are `reading/theme`, `reading/font`,
 `reading/infoMode`, `reading/speed` (the learned reading speed), and
 `library/sort`.
 
-## `~/.cache/quire/`
+## `~/.cache/nell/`
 
 Unpacked EPUBs (`<id>/`) and covers. Nothing here is the only copy of anything.
 Delete it whenever you like.

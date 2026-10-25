@@ -10,7 +10,7 @@ ApplicationWindow {
     minimumWidth: 640
     minimumHeight: 480
     visible: true
-    title: reader.open ? reader.title : "Quire"
+    title: reader.open ? reader.title : "Nell"
     color: reader.open ? prefs.pageColor : "#0e0e10"
 
     Material.theme: Material.Dark

@@ -16,7 +16,7 @@ struct BookInfo {
     int pages = 0;        // PDFs only; an EPUB's pages depend on the window.
 };
 
-// The books the reader has added, kept in ~/.local/share/quire/library.json,
+// The books the reader has added, kept in ~/.local/share/nell/library.json,
 // with each book's place, bookmarks and highlights beside it in books/<id>.json.
 // Books are referenced where they live and never modified; a book's id is a
 // hash of its contents, so moving or re-adding the file finds its notes again.
@@ -49,6 +49,11 @@ public:
     QString cacheDirectory(const QString &id) const { return m_cacheDirectory + "/" + id; }
     QJsonObject annotations(const QString &id) const;
     bool saveAnnotations(const QString &id, QJsonObject annotations);
+
+    // Nell was called Quire before 0.3.0. Its data, settings, and cache
+    // directories under these roots move across once, unless Nell already
+    // has its own, and the covers the library points into the cache follow.
+    static void adoptQuire(const QString &dataRoot, const QString &configRoot, const QString &cacheRoot);
 
     static QString fileId(const QString &path);
     static bool inspect(const QString &path, const QString &cacheDirectory, BookInfo *info, QString *error);

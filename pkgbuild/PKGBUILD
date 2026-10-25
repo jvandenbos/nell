@@ -1,9 +1,11 @@
-pkgname=quire
-pkgver=0.2.0
+pkgname=nell
+pkgver=0.3.0
 pkgrel=1
 pkgdesc='Read EPUB and PDF books, after Apple Books, with the best of Kindle'
 arch=('x86_64' 'aarch64')
 license=('MIT')
+conflicts=('quire')
+replaces=('quire')
 depends=('qt6-base' 'qt6-declarative' 'qt6-svg' 'qt6-wayland' 'poppler-qt6' 'libarchive' 'xdg-desktop-portal')
 makedepends=('gcc' 'make')
 source=()
@@ -16,8 +18,8 @@ build() {
 
 package() {
   cd "$startdir/.."
-  install -Dm755 build/quire "$pkgdir/usr/bin/quire"
+  install -Dm755 build/nell "$pkgdir/usr/bin/nell"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-  install -Dm644 "$startdir/quire.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/quire.svg"
-  install -Dm644 "$startdir/quire.desktop" "$pkgdir/usr/share/applications/quire.desktop"
+  install -Dm644 "$startdir/nell.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/nell.svg"
+  install -Dm644 "$startdir/nell.desktop" "$pkgdir/usr/share/applications/nell.desktop"
 }

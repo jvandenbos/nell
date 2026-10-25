@@ -1,6 +1,6 @@
 # Architecture
 
-Quire is one C++17 / Qt 6 Quick binary. C++ owns the state (the library, the
+Nell is one C++17 / Qt 6 Quick binary. C++ owns the state (the library, the
 open book, preferences); QML draws it. `src/main.cpp` builds one of each object
 and hands them to QML as context properties, so there is no model layer between
 them.
@@ -8,8 +8,8 @@ them.
 ```
 main.cpp ──► Translator   ~/.config/omarchy/language → i18n/<lang>.json
          ├─► Theme        ~/.local/state/omarchy/current → accent, rounding, colors
-         ├─► Preferences  ~/.config/quire/quire.conf
-         ├─► Library      ~/.local/share/quire/{library.json, books/<id>.json}
+         ├─► Preferences  ~/.config/nell/nell.conf
+         ├─► Library      ~/.local/share/nell/{library.json, books/<id>.json}
          ├─► Reader       the open book: pagination, place, marks
          ├─► Dictionary   Wiktionary look-ups
          ├─► PortalFilePicker   xdg-desktop-portal file chooser over D-Bus
@@ -25,7 +25,7 @@ hands over to `cli.cpp`. That is why the commands work over ssh and from agents.
 | File | What it does |
 | --- | --- |
 | `library.{h,cpp}` | The list of books and each book's saved marks. A book is identified by the first 16 hex digits of the SHA-256 of its file, so a moved or re-added file keeps its notes. Books are never written to. |
-| `epub.{h,cpp}` | Unpacks an EPUB with `bsdtar` into `~/.cache/quire/<id>/` and reads the OPF: metadata, spine (reading order), and the table of contents from `nav.xhtml` or the NCX. |
+| `epub.{h,cpp}` | Unpacks an EPUB with `bsdtar` into `~/.cache/nell/<id>/` and reads the OPF: metadata, spine (reading order), and the table of contents from `nav.xhtml` or the NCX. |
 | `reader.{h,cpp}` | The open book. EPUB chapters load into a `QTextDocument` subclass (`BookDocument`) and are laid out at the window's page size; PDFs are rendered by Poppler. Owns bookmarks, highlights, words, undo/redo, search, and the reading-speed estimate. |
 | `pageview.{h,cpp}` | The `QQuickPaintedItem` that paints the current page or spread and turns clicks and drags into page turns, selections, links, and highlight picks. It keeps no state. |
 | `preferences.{h,cpp}` | Reading settings and the learned reading speed. A change that moves text (font, size, spacing, margins) emits `layoutChanged` so the Reader paginates again; a color change only repaints. |
@@ -34,7 +34,7 @@ hands over to `cli.cpp`. That is why the commands work over ssh and from agents.
 | `dictionary.{h,cpp}` | Fetches a definition from Wiktionary. Only the selected word goes out, and only on request. |
 | `portalfilepicker.{h,cpp}`, `filepicker.h` | The native file chooser through the desktop portal. |
 | `cli.{h,cpp}` | The headless commands, each with a `--json` form. |
-| `skill.md` | The agent skill `quire skill install` writes out. |
+| `skill.md` | The agent skill `nell skill install` writes out. |
 | `*.qml` | The interface: `Main.qml` switches between `LibraryView` and `ReaderView`; the panels (contents, search, appearance, notes) are separate files. |
 
 ## Places in a book
@@ -70,11 +70,11 @@ changes. A choice made with the Appearance switch is saved with the book as
 
 The theme watcher, the translator, and the portal file chooser follow the
 versions in Omacut, Monologue, and Hype (the Omarchy apps by David Heinemeier
-Hansson), so Quire behaves like its neighbours on the desktop.
+Hansson), so Nell behaves like its neighbours on the desktop.
 
 ## Tests
 
-`tests/quire_tests.cpp` is one Qt Test suite covering the Omarchy theme
+`tests/nell_tests.cpp` is one Qt Test suite covering the Omarchy theme
 and language watchers, the shipped translation catalogs, EPUB parsing, the
 library, the reader (pagination, marks and undo, search, PDFs), the reading-speed
 estimate, and Wiktionary parsing. It builds the

@@ -136,7 +136,7 @@ PortalFileFilter markdownFilter() {
 }
 
 QString portalToken() {
-    return QStringLiteral("quire_%1").arg(QRandomGenerator::global()->generate());
+    return QStringLiteral("nell_%1").arg(QRandomGenerator::global()->generate());
 }
 
 QByteArray portalPathBytes(const QString &path) {

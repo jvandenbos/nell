@@ -1,19 +1,19 @@
 #!/bin/sh
-# quire.pro, the PKGBUILD and the newest CHANGELOG release each name the
+# nell.pro, the PKGBUILD and the newest CHANGELOG release each name the
 # version; a release that bumps one and forgets another ships the wrong number.
 set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-pro=$(sed -n 's/^VERSION = //p' "$ROOT/quire.pro")
+pro=$(sed -n 's/^VERSION = //p' "$ROOT/nell.pro")
 pkg=$(sed -n 's/^pkgver=//p' "$ROOT/pkgbuild/PKGBUILD")
 log=$(sed -n 's/^## \[\([0-9][^]]*\)\].*/\1/p' "$ROOT/CHANGELOG.md" | head -n 1)
 
 if ! printf '%s\n' "$pro" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-    echo "quire.pro VERSION '$pro' is not MAJOR.MINOR.PATCH" >&2
+    echo "nell.pro VERSION '$pro' is not MAJOR.MINOR.PATCH" >&2
     exit 1
 fi
 if [ "$pro" != "$pkg" ] || [ "$pro" != "$log" ]; then
-    echo "Version mismatch: quire.pro $pro, PKGBUILD $pkg, CHANGELOG $log" >&2
+    echo "Version mismatch: nell.pro $pro, PKGBUILD $pkg, CHANGELOG $log" >&2
     exit 1
 fi
 echo "Version $pro"

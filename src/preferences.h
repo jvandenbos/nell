@@ -6,7 +6,7 @@
 
 class Theme;
 
-// How the reader likes their pages, kept in ~/.config/quire/quire.conf.
+// How the reader likes their pages, kept in ~/.config/nell/nell.conf.
 // Changes that move text around emit layoutChanged, so the Reader paginates
 // again; color changes only need a repaint.
 class Preferences : public QObject {

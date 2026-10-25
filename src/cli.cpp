@@ -35,7 +35,7 @@ struct Command {
     bool parse(const QStringList &arguments) {
         QStringList rest = arguments;
         rest.removeAt(1);
-        rest[0] = "quire " + name;
+        rest[0] = "nell " + name;
         return parser.parse(rest);
     }
     QString name;
@@ -155,7 +155,7 @@ int notes(const QStringList &arguments) {
     if (id.isEmpty() && QFileInfo(target).isFile())
         id = library.findId(Library::fileId(target));
     if (id.isEmpty())
-        return fail(target + " isn't in the library. Add it with: quire add " + target);
+        return fail(target + " isn't in the library. Add it with: nell add " + target);
     // Page numbers depend on layout; these are at a typical window size.
     Preferences preferences(nullptr);
     Reader reader(&library, &preferences);
@@ -183,7 +183,7 @@ int notes(const QStringList &arguments) {
 
 int skill(const QStringList &arguments) {
     Command command("skill", "Print the agent skill, or install it for your coding agents with: skill install.");
-    command.parser.addPositionalArgument("install", "Copy to ~/.agents/skills/quire and link into ~/.claude/skills",
+    command.parser.addPositionalArgument("install", "Copy to ~/.agents/skills/nell and link into ~/.claude/skills",
                                          "[install]");
     if (!command.parse(arguments))
         return fail(command.parser.errorText());
@@ -199,18 +199,18 @@ int skill(const QStringList &arguments) {
         return 0;
     }
     if (positional != QStringList{"install"})
-        return fail("Use quire skill to print the skill, or quire skill install.");
+        return fail("Use nell skill to print the skill, or nell skill install.");
     const QDir home = QDir::home();
-    const QString directory = home.filePath(".agents/skills/quire");
+    const QString directory = home.filePath(".agents/skills/nell");
     if (!QDir().mkpath(directory))
         return fail("Could not create " + directory);
     QFile out(directory + "/SKILL.md");
     if (!out.open(QIODevice::WriteOnly) || out.write(text) != text.size())
         return fail("Could not write " + out.fileName());
     out.close();
-    const QString link = home.filePath(".claude/skills/quire");
+    const QString link = home.filePath(".claude/skills/nell");
     if (!QFileInfo(link).isSymLink() && !QFileInfo::exists(link)) {
-        if (!home.mkpath(".claude/skills") || !QFile::link("../../.agents/skills/quire", link))
+        if (!home.mkpath(".claude/skills") || !QFile::link("../../.agents/skills/nell", link))
             return fail("Could not link " + link);
     }
     if (command.parser.isSet("json"))
@@ -243,5 +243,5 @@ int runCli(const QStringList &arguments) {
            : command == "info"  ? info(arguments)
            : command == "notes" ? notes(arguments)
            : command == "skill" ? skill(arguments)
-                                : (print(stdout, "Usage: quire [command] [book]\n\n" + cliSummary()), 0);
+                                : (print(stdout, "Usage: nell [command] [book]\n\n" + cliSummary()), 0);
 }

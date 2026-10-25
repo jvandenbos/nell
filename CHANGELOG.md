@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-24
+
+### Changed
+
+- Renamed from Quire to Nell, after the girl who reads the Primer in *The
+  Diamond Age*. "Quire" already names Getty's digital book publishing
+  framework, a task manager, and an Arch (AUR) package. The binary, package, desktop entry, data
+  directories, and agent skill are all `nell` now.
+
+### Added
+
+- On first run Nell moves Quire's library, notes, settings, and cache from
+  `~/.local/share/quire`, `~/.config/quire`, and `~/.cache/quire`, unless
+  Nell already has its own. Run `nell skill install` again if you had the
+  Quire skill installed.
+
 ## [0.2.0] - 2026-10-24
 
 ### Added
@@ -40,6 +56,7 @@ All notable changes to this project are documented here. The format follows
 - `quire list`, `add`, `info`, `notes`, and `skill` commands for scripts and agents.
 - Danish, Dutch, French, German, and Spanish translations.
 
-[Unreleased]: https://github.com/jvandenbos/quire/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/jvandenbos/quire/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/jvandenbos/quire/releases/tag/v0.1.0
+[Unreleased]: https://github.com/jvandenbos/nell/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/jvandenbos/nell/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/jvandenbos/nell/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/jvandenbos/nell/releases/tag/v0.1.0

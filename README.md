@@ -1,8 +1,8 @@
-# Quire
+# Nell
 
-![Quire reading Alice's Adventures in Wonderland on the Paper theme, with a highlight and the selection bar](docs/reader.png)
+![Nell reading Alice's Adventures in Wonderland on the Paper theme, with a highlight and the selection bar](docs/reader.png)
 
-Quire reads EPUB and PDF books on Omarchy. It looks and moves like Apple Books
+Nell reads EPUB and PDF books on Omarchy. It looks and moves like Apple Books
 — a shelf of covers, full-bleed pages in a reading theme, controls that stay
 out of the way — and keeps the best of Kindle: time left in the chapter learned
 from your own pace, a dictionary on any word with a Words list of everything you
@@ -31,7 +31,7 @@ looked up, and your highlights and notes exportable as Markdown.
   left in the chapter, time left in the book, pages left in the chapter, and
   Kindle-style locations.
 
-Quire follows the Omarchy accent and window rounding live, and the language set
+Nell follows the Omarchy accent and window rounding live, and the language set
 under Setup > Language (Danish, Dutch, English, French, German, and Spanish so
 far).
 
@@ -67,25 +67,25 @@ Press `?` in the app to see them all.
 ## Command line
 
 Every command takes `--json`, exits 0 or 1, and needs no display, so agents and
-scripts can use the library too. `quire skill install` installs a short skill
+scripts can use the library too. `nell skill install` installs a short skill
 that tells coding agents how.
 
 ```sh
-quire open [book]          # the reader, or a book in it
-quire list                 # the library, most recently read first
-quire add <file>...        # add EPUB and PDF books
-quire info <book>          # title, author, and contents
-quire notes <book>         # highlights and notes as Markdown (--json for data)
+nell open [book]          # the reader, or a book in it
+nell list                 # the library, most recently read first
+nell add <file>...        # add EPUB and PDF books
+nell info <book>          # title, author, and contents
+nell notes <book>         # highlights and notes as Markdown (--json for data)
 ```
 
 ## Where things are kept
 
-- `~/.local/share/quire/library.json` — the library.
-- `~/.local/share/quire/books/<id>.json` — each book's place, bookmarks,
+- `~/.local/share/nell/library.json` — the library.
+- `~/.local/share/nell/books/<id>.json` — each book's place, bookmarks,
   highlights, notes, and looked-up words. Removing a book from the library
   keeps this, so adding it again brings them back.
-- `~/.cache/quire/` — unpacked EPUBs and covers; safe to delete.
-- `~/.config/quire/quire.conf` — appearance settings and your learned reading speed.
+- `~/.cache/nell/` — unpacked EPUBs and covers; safe to delete.
+- `~/.config/nell/nell.conf` — appearance settings and your learned reading speed.
 
 Both JSON files carry a `version` field for their format.
 
@@ -93,11 +93,11 @@ Looking up a word sends that word, and nothing else, to Wiktionary.
 
 ## Building
 
-Quire is C++ and Qt Quick, built with qmake into one binary. It uses Poppler for
+Nell is C++ and Qt Quick, built with qmake into one binary. It uses Poppler for
 PDFs and `bsdtar` (libarchive) to unpack EPUBs.
 
 ```sh
-bin/build     # build/quire
+bin/build     # build/nell
 bin/test      # the Qt Test suite, offscreen
 bin/install   # build and install the Arch package, so it's in the app launcher
 ```
@@ -113,8 +113,8 @@ bin/install   # build and install the Arch package, so it's in the app launcher
 On Arch or Omarchy, from a clone:
 
 ```sh
-git clone https://github.com/jvandenbos/quire.git
-cd quire
+git clone https://github.com/jvandenbos/nell.git
+cd nell
 bin/install   # builds, then makepkg -si (asks for sudo)
 ```
 

@@ -19,7 +19,7 @@
 
 namespace {
 QString defaultDirectory(QStandardPaths::StandardLocation location) {
-    return QStandardPaths::writableLocation(location) + "/quire";
+    return QStandardPaths::writableLocation(location) + "/nell";
 }
 
 QString localPath(const QString &pathOrUrl) {
@@ -35,6 +35,35 @@ QString titleFromFile(const QFileInfo &file) {
     title.replace('_', ' ').replace(QRegularExpression(R"((?<=\w)-(?=\w))"), " ");
     return title.simplified();
 }
+}
+
+void Library::adoptQuire(const QString &dataRoot, const QString &configRoot, const QString &cacheRoot) {
+    auto adopt = [](const QString &root) {
+        QDir dir(root);
+        return dir.exists("quire") && !dir.exists("nell") && dir.rename("quire", "nell");
+    };
+    if (adopt(configRoot))
+        QFile::rename(configRoot + "/nell/quire.conf", configRoot + "/nell/nell.conf");
+    const bool cacheMoved = adopt(cacheRoot);
+    if (!adopt(dataRoot) || !cacheMoved)
+        return;
+    const QString path = dataRoot + "/nell/library.json";
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return;
+    QJsonObject object = QJsonDocument::fromJson(file.readAll()).object();
+    file.close();
+    const QString from = cacheRoot + "/quire/", to = cacheRoot + "/nell/";
+    QJsonArray books = object["books"].toArray();
+    for (qsizetype i = 0; i < books.size(); ++i) {
+        QJsonObject book = books[i].toObject();
+        const QString cover = book["cover"].toString();
+        if (cover.startsWith(from))
+            book["cover"] = to + cover.mid(from.size());
+        books[i] = book;
+    }
+    object["books"] = books;
+    writeJson(path, object);
 }
 
 Library::Library(const QString &dataDirectory, const QString &cacheDirectory, QObject *parent)
@@ -92,8 +121,8 @@ bool Library::inspect(const QString &path, const QString &cacheDirectory, BookIn
             info->title = titleFromFile(file);
         return true;
     }
-    *error = suffix.isEmpty() ? tr("Quire reads EPUB and PDF books, and this is neither.")
-                              : tr("Quire reads EPUB and PDF books, not .%1 files.").arg(suffix);
+    *error = suffix.isEmpty() ? tr("Nell reads EPUB and PDF books, and this is neither.")
+                              : tr("Nell reads EPUB and PDF books, not .%1 files.").arg(suffix);
     return false;
 }
 

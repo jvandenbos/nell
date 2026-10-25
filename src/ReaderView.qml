@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
-import Quire
+import Nell
 
 // An open book. The page fills the window in the reading theme's color; the
 // controls stay out of the way until the pointer moves, as in Apple Books.

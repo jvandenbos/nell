@@ -2,13 +2,13 @@ QT += core gui qml quick quickcontrols2 dbus network
 
 CONFIG += c++17 release link_pkgconfig
 PKGCONFIG += poppler-qt6
-TARGET = quire
+TARGET = nell
 TEMPLATE = app
 
 # The release version. pkgbuild/PKGBUILD and CHANGELOG.md must agree;
 # bin/check-version (run by bin/test) fails when they drift. See docs/releasing.md.
-VERSION = 0.2.0
-DEFINES += QUIRE_VERSION=\\\"$$VERSION\\\"
+VERSION = 0.3.0
+DEFINES += NELL_VERSION=\\\"$$VERSION\\\"
 
 HEADERS += \
     src/cli.h \
