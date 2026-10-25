@@ -34,6 +34,9 @@ Timestamps are ISO 8601 strings in UTC (`2026-10-23T13:55:02Z`).
   "books": [
     {
       "id": "3f9c0a1b2d4e5f60",
+      "sha256": "3f9c0a1b2d4e5f60…(64 hex digits)",
+      "size": 186412,
+      "modified": "2026-10-20T08:12:44.120Z",
       "path": "/home/me/Books/alice.epub",
       "format": "epub",
       "title": "Alice's Adventures in Wonderland",
@@ -51,6 +54,14 @@ Timestamps are ISO 8601 strings in UTC (`2026-10-23T13:55:02Z`).
 
 - `id`: the first 16 hex digits of the SHA-256 of the book file. It names the
   annotations file and the cache directory.
+- `sha256`, `size`, `modified`: the whole digest, byte size, and modification
+  time of the file when it was added or last checked. Opening a book compares
+  size and time and hashes the file again only if they changed. If the digest
+  changed, the file was edited in place: Nell adds what's there now as a new
+  entry with fresh notes, and leaves the old entry and its notes untouched,
+  with `replacedBy` on the old entry and `revisionOf` on the new one naming
+  each other. Books added before these fields existed get them the first time
+  they're opened.
 - `format`: `"epub"` or `"pdf"`.
 - `progress`: 0 to 1. `finished` is set once a book reaches the end and stays set.
 - `opened` is empty until the book is first read.
@@ -101,5 +112,6 @@ read but never written. The keys are `reading/theme`, `reading/font`,
 
 ## `~/.cache/nell/`
 
-Unpacked EPUBs (`<id>/`) and covers. Nothing here is the only copy of anything.
+Unpacked EPUBs (`<id>/`, each with `.nell-sha256` naming the file it came
+from; one that doesn't match is unpacked again) and covers. Nothing here is the only copy of anything.
 Delete it whenever you like.

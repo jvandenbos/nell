@@ -33,7 +33,7 @@ way is finished by the next one; problems go to stderr.
 
 | File | What it does |
 | --- | --- |
-| `library.{h,cpp}` | The list of books and each book's saved marks. Every write locks the file, rereads it, and merges (see [file-formats.md](file-formats.md)), so two Nells don't lose each other's changes. A book is identified by the first 16 hex digits of the SHA-256 of its file, so a moved or re-added file keeps its notes. Books are never written to. |
+| `library.{h,cpp}` | The list of books and each book's saved marks. Every write locks the file, rereads it, and merges (see [file-formats.md](file-formats.md)), so two Nells don't lose each other's changes. A book is identified by the first 16 hex digits of the SHA-256 of its file, so a moved or re-added file keeps its notes; the full digest, size, and time are kept too, so a file changed in place is noticed on open and becomes a new entry instead of inheriting notes made on other text. Books are never written to. |
 | `epub.{h,cpp}` | Unpacks an EPUB with `bsdtar` into `~/.cache/nell/<id>/` and reads the OPF: metadata, spine (reading order), and the table of contents from `nav.xhtml` or the NCX. |
 | `reader.{h,cpp}` | The open book. EPUB chapters load into a `QTextDocument` subclass (`BookDocument`) and are laid out at the window's page size; PDFs are rendered by Poppler. Owns bookmarks, highlights, words, undo/redo, search, and the reading-speed estimate. |
 | `pageview.{h,cpp}` | The `QQuickPaintedItem` that paints the current page or spread and turns clicks and drags into page turns, selections, links, and highlight picks. It keeps no state. |

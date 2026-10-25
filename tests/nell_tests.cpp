@@ -4,6 +4,7 @@
 #include <QPainter>
 #include <QPdfWriter>
 #include <QProcess>
+#include <QSignalSpy>
 #include <QRegularExpression>
 #include <QTemporaryDir>
 #include <QtTest>
@@ -629,6 +630,71 @@ private slots:
         QCOMPARE(saved["bookmarks"].toArray().size(), 1);
     }
 
+    void aBookChangedInPlaceKeepsItsOldNotes()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        const QString path = makePdf(dir.path() + "/paper.pdf", 3);
+        const QString id = library.add(path);
+        QCOMPARE(library.book(id)["sha256"].toString().size(), 64);
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(id));
+        reader.setGeometry(600, 800, 1, 0);
+        reader.select(0, 0, 1);
+        QVERIFY(!reader.highlight("yellow").isEmpty());
+        reader.close();
+        const QByteArray notes = [&] {
+            QFile file(dir.path() + "/data/books/" + id + ".json");
+            return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+        }();
+
+        // Touched but the same: the same book, and its notes.
+        QFile touched(path);
+        QVERIFY(touched.open(QIODevice::ReadWrite));
+        QVERIFY(touched.setFileTime(QDateTime::currentDateTime().addDays(1), QFileDevice::FileModificationTime));
+        touched.close();
+        QVERIFY(reader.openBook(id));
+        QCOMPARE(reader.bookId(), id);
+        QCOMPARE(reader.highlights().size(), 1);
+        reader.close();
+
+        // Different contents under the same name: a new revision, with no
+        // notes, and the old notes left exactly where they were.
+        QVERIFY(QFile::remove(path));
+        makePdf(path, 2);
+        QSignalSpy changed(&reader, &Reader::fileChanged);
+        QVERIFY(reader.openBook(id));
+        QVERIFY(reader.bookId() != id);
+        QCOMPARE(changed.size(), 1);
+        QCOMPARE(reader.previousRevision(), id);
+        QVERIFY(reader.highlights().isEmpty());
+        QCOMPARE(reader.pageCount(), 2);
+        reader.close();
+        QFile file(dir.path() + "/data/books/" + id + ".json");
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(file.readAll(), notes);
+        QCOMPARE(library.books().size(), 2);
+        QCOMPARE(library.book(id)["replacedBy"].toString(), changed[0][1].toString());
+    }
+
+    void epubCacheIsCheckedAgainstTheFile()
+    {
+        QTemporaryDir dir;
+        const QString first = makeEpub(dir.path() + "/a", "First Title");
+        const QString second = makeEpub(dir.path() + "/b", "Second Title");
+        QString error;
+        Epub epub;
+        QVERIFY(Epub::extract(first, dir.path() + "/unpacked", &error, Library::fileDigest(first)));
+        QVERIFY(epub.load(dir.path() + "/unpacked", &error));
+        QCOMPARE(epub.title, QString("First Title"));
+        // An unpacked book from another file isn't reused.
+        QVERIFY(Epub::extract(second, dir.path() + "/unpacked", &error, Library::fileDigest(second)));
+        Epub again;
+        QVERIFY(again.load(dir.path() + "/unpacked", &error));
+        QCOMPARE(again.title, QString("Second Title"));
+    }
+
     void quireDataMovesToNell()
     {
         QTemporaryDir dir;
@@ -845,7 +911,7 @@ private:
     }
 
     // A small EPUB 3 with a nav document, two chapters, an anchor, and a cover.
-    static QString makeEpub(const QString &directory)
+    static QString makeEpub(const QString &directory, const QByteArray &title = "The Test Book")
     {
         const QString root = directory + "/source";
         write(root + "/mimetype", "application/epub+zip");
@@ -856,7 +922,7 @@ private:
         write(root + "/OEBPS/content.opf", R"(<?xml version="1.0"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    <dc:title>The Test Book</dc:title><dc:creator>Ada Writer</dc:creator><dc:language>en</dc:language>
+    <dc:title>)" + title + R"(</dc:title><dc:creator>Ada Writer</dc:creator><dc:language>en</dc:language>
   </metadata>
   <manifest>
     <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>

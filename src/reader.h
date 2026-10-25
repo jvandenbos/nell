@@ -44,6 +44,9 @@ class Reader : public QObject {
     Q_PROPERTY(QString title READ title NOTIFY openChanged)
     Q_PROPERTY(QString author READ author NOTIFY openChanged)
     Q_PROPERTY(QString language READ language NOTIFY openChanged)
+    // The library id of an earlier version of this book's file, whose notes
+    // stayed with it when the file changed in place; empty if none.
+    Q_PROPERTY(QString previousRevision READ previousRevision NOTIFY openChanged)
     Q_PROPERTY(QString error READ error NOTIFY errorChanged)
     Q_PROPERTY(int pageCount READ pageCount NOTIFY layoutChanged)
     Q_PROPERTY(int page READ page NOTIFY positionChanged)
@@ -144,6 +147,7 @@ public:
     QString title() const { return m_title; }
     QString author() const { return m_author; }
     QString language() const { return m_language; }
+    QString previousRevision() const { return m_previousRevision; }
     QString error() const { return m_error; }
     int pageCount() const;
     int page() const { return m_page; }
@@ -186,6 +190,9 @@ public:
 
 signals:
     void openChanged();
+    // Opening oldId found its file changed, so newId, a new library entry
+    // for what's there now, was opened instead. oldId keeps its notes.
+    void fileChanged(const QString &oldId, const QString &newId);
     void errorChanged();
     void layoutChanged();
     // Queued: the view's layout depends on it, and it changes while the
@@ -211,7 +218,7 @@ private:
     };
 
     void setError(const QString &message);
-    bool loadEpub(const QString &directory);
+    bool loadEpub(const QString &directory, const QString &digest);
     bool loadPdf(const QString &path);
     void loadChapters();
     void styleChapters();
@@ -252,6 +259,7 @@ private:
     Library *m_library;
     Preferences *m_preferences;
     QString m_id, m_path, m_format, m_title, m_author, m_language, m_error;
+    QString m_previousRevision;
 
     std::vector<std::unique_ptr<BookDocument>> m_chapters;
     QString m_root;

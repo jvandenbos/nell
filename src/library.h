@@ -9,6 +9,7 @@
 // What the library knows about one book file without opening it for reading.
 struct BookInfo {
     QString id;
+    QString digest;  // The whole SHA-256 of the file, of which id is the start.
     QString path;
     QString format;  // "epub" or "pdf"
     QString title;
@@ -68,6 +69,14 @@ public:
     Q_INVOKABLE void clearError();
 
     void touch(const QString &id, double progress);
+    // Whether the book's file still holds what was added: its size and time
+    // are compared, and the file hashed again only if they changed. Returns
+    // the id of what's there now, which differs from id when the contents
+    // changed, or an empty id when it can't be read. With record, a file
+    // that's only been touched has its new size and time saved.
+    QString checkFile(const QString &id, bool record);
+    // The file of oldId was changed into newId: each entry names the other.
+    void markRevision(const QString &oldId, const QString &newId);
     QString findId(const QString &pathOrId) const;
 
     QString cacheRoot() const { return m_cacheDirectory; }
@@ -93,7 +102,8 @@ public:
     // Whether Quire's library is still waiting to be moved across.
     static bool quireWaiting(const QString &dataRoot);
 
-    static QString fileId(const QString &path);
+    static QString fileDigest(const QString &path);
+    static QString fileId(const QString &path) { return fileDigest(path).left(16); }
     static bool inspect(const QString &path, const QString &cacheDirectory, BookInfo *info, QString *error);
     static bool writeJson(const QString &path, const QJsonObject &object);
     static Store readStore(const QString &path);

@@ -22,6 +22,11 @@ All notable changes to this project are documented here. The format follows
 - Two Nells writing at once (the window and `nell add`, or two windows) no
   longer lose each other's changes: each save locks the file, rereads it, and
   merges books by id and notes mark by mark.
+- A book file replaced in place with different contents no longer gets the old
+  notes laid over new text. Nell keeps each book's whole SHA-256, size, and
+  time, notices the change on open, and opens the new contents as a new entry
+  (`Reader.fileChanged`, `Reader.previousRevision`), leaving the old notes
+  with the old one. An unpacked EPUB is reused only if it came from the same file.
 
 ## [0.3.0] - 2026-10-24
 

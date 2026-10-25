@@ -27,8 +27,18 @@ QString resolve(const QString &baseFile, const QString &href) {
 QString simplified(const QString &text) { return text.simplified(); }
 }
 
-bool Epub::extract(const QString &file, const QString &directory, QString *error) {
-    if (QFileInfo::exists(directory + "/META-INF/container.xml"))
+namespace {
+// Beside the unpacked book: the digest of the file it came from.
+QString stampOf(const QString &directory) { return directory + "/.nell-sha256"; }
+
+QString readStamp(const QString &directory) {
+    QFile file(stampOf(directory));
+    return file.open(QIODevice::ReadOnly) ? QString::fromLatin1(file.readAll()).trimmed() : QString();
+}
+}
+
+bool Epub::extract(const QString &file, const QString &directory, QString *error, const QString &digest) {
+    if (QFileInfo::exists(directory + "/META-INF/container.xml") && (digest.isEmpty() || readStamp(directory) == digest))
         return true;
     const QString bsdtar = QStandardPaths::findExecutable("bsdtar");
     if (bsdtar.isEmpty()) {
@@ -53,6 +63,11 @@ bool Epub::extract(const QString &file, const QString &directory, QString *error
         QDir(partial).removeRecursively();
         *error = tr("This file is not an EPUB book.");
         return false;
+    }
+    if (!digest.isEmpty()) {
+        QFile stamp(stampOf(partial));
+        if (stamp.open(QIODevice::WriteOnly))
+            stamp.write(digest.toLatin1());
     }
     QDir(directory).removeRecursively();
     if (!QDir().rename(partial, directory)) {

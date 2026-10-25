@@ -187,11 +187,37 @@ bool Reader::openBook(const QString &id) {
         setError(tr("%1 has moved or been deleted. Add it again from where it is now.").arg(m_path));
         return false;
     }
+    // A file changed in place is a new revision: its notes start afresh,
+    // and the old ones stay with the old entry rather than landing on text
+    // they weren't made on.
+    const QString current = m_library->checkFile(id, !m_readOnly);
+    if (current.isEmpty()) {
+        setError(tr("%1 can't be read.").arg(m_path));
+        return false;
+    }
+    if (current != id) {
+        if (m_readOnly) {
+            setError(tr("%1 has changed since its notes were made.").arg(m_path));
+            return false;
+        }
+        const QString path = m_path;
+        const QString revision = m_library->add(path);
+        if (revision.isEmpty()) {
+            setError(m_library->error());
+            return false;
+        }
+        m_library->markRevision(id, revision);
+        if (!openBook(revision))
+            return false;
+        emit fileChanged(id, revision);
+        return true;
+    }
     m_format = book["format"].toString();
     m_title = book["title"].toString();
     m_author = book["author"].toString();
     m_language = book["language"].toString();
-    const bool loaded = m_format == QLatin1String("pdf") ? loadPdf(m_path) : loadEpub(m_library->cacheDirectory(id));
+    m_previousRevision = book["revisionOf"].toString();
+    const bool loaded = m_format == QLatin1String("pdf") ? loadPdf(m_path) : loadEpub(m_library->cacheDirectory(id), m_library->book(id)["sha256"].toString());
     if (!loaded) {
         m_chapters.clear();
         m_pdf.reset();
@@ -227,10 +253,10 @@ bool Reader::openBook(const QString &id) {
     return true;
 }
 
-bool Reader::loadEpub(const QString &directory) {
+bool Reader::loadEpub(const QString &directory, const QString &digest) {
     QString error;
     Epub epub;
-    if (!Epub::extract(m_path, directory, &error) || !epub.load(directory, &error)) {
+    if (!Epub::extract(m_path, directory, &error, digest) || !epub.load(directory, &error)) {
         setError(error);
         return false;
     }
@@ -468,6 +494,7 @@ void Reader::close() {
     m_bookmarks = m_highlights = m_vocabulary = QJsonArray();
     m_savedAnnotations = QJsonObject();
     m_notesLocked = false;
+    m_previousRevision.clear();
     m_searchResults.clear();
     m_searchChapter = m_searchStart = m_searchEnd = -1;
     m_selectionChapter = m_selectionStart = m_selectionEnd = -1;

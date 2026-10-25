@@ -138,13 +138,13 @@ Library::Library(const QString &dataDirectory, const QString &cacheDirectory, QO
     load();
 }
 
-QString Library::fileId(const QString &path) {
+QString Library::fileDigest(const QString &path) {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
         return {};
     QCryptographicHash hash(QCryptographicHash::Sha256);
     hash.addData(&file);
-    return QString::fromLatin1(hash.result().toHex().left(16));
+    return QString::fromLatin1(hash.result().toHex());
 }
 
 bool Library::inspect(const QString &path, const QString &cacheDirectory, BookInfo *info, QString *error) {
@@ -154,7 +154,8 @@ bool Library::inspect(const QString &path, const QString &cacheDirectory, BookIn
         return false;
     }
     info->path = file.absoluteFilePath();
-    info->id = fileId(info->path);
+    info->digest = fileDigest(info->path);
+    info->id = info->digest.left(16);
     if (info->id.isEmpty()) {
         *error = tr("%1 can't be read.").arg(path);
         return false;
@@ -162,7 +163,7 @@ bool Library::inspect(const QString &path, const QString &cacheDirectory, BookIn
     const QString suffix = file.suffix().toLower();
     if (suffix == QLatin1String("epub")) {
         Epub epub;
-        if (!Epub::extract(info->path, cacheDirectory + "/" + info->id, error) ||
+        if (!Epub::extract(info->path, cacheDirectory + "/" + info->id, error, info->digest) ||
             !epub.load(cacheDirectory + "/" + info->id, error))
             return false;
         info->format = "epub";
@@ -223,14 +224,24 @@ QString Library::add(const QString &pathOrUrl) {
         setError(error);
         return {};
     }
+    const QFileInfo file(info.path);
+    const QVariantMap stamp{{"sha256", info.digest},
+                            {"size", file.size()},
+                            {"modified", file.lastModified().toUTC().toString(Qt::ISODateWithMs)}};
     const int index = indexOf(info.id);
-    if (index >= 0 && m_books[index].toMap()["path"] == info.path)
-        return info.id;
+    if (index >= 0) {
+        const auto book = m_books[index].toMap();
+        if (book["path"] == info.path && book["sha256"] == info.digest && book["size"].toLongLong() == file.size() &&
+            book["modified"] == stamp["modified"])
+            return info.id;
+    }
     auto entry = [&] {
-        return QVariantMap{{"id", info.id},          {"path", info.path},   {"format", info.format},
-                           {"title", info.title},    {"author", info.author}, {"language", info.language},
-                           {"cover", makeCover(info)}, {"progress", 0.0},   {"added", now()},
-                           {"opened", QString()},   {"finished", false}};
+        QVariantMap book{{"id", info.id},          {"path", info.path},   {"format", info.format},
+                         {"title", info.title},    {"author", info.author}, {"language", info.language},
+                         {"cover", makeCover(info)}, {"progress", 0.0},   {"added", now()},
+                         {"opened", QString()},   {"finished", false}};
+        book.insert(stamp);
+        return book;
     };
     // The same book from somewhere new follows the file. Asked of the
     // library on disk, which another Nell may have added it to meanwhile.
@@ -240,6 +251,7 @@ QString Library::add(const QString &pathOrUrl) {
             if (book["id"] != info.id)
                 continue;
             book["path"] = info.path;
+            book.insert(stamp);
             value = book;
             return;
         }
@@ -322,6 +334,49 @@ void Library::touch(const QString &id, double progress) {
             if (progress >= 0.995)
                 book["finished"] = true;
             value = book;
+        }
+    });
+}
+
+QString Library::checkFile(const QString &id, bool record) {
+    const QVariantMap book = this->book(id);
+    const QFileInfo file(book["path"].toString());
+    const QString modified = file.lastModified().toUTC().toString(Qt::ISODateWithMs);
+    if (!book["sha256"].toString().isEmpty() && book["size"].toLongLong() == file.size() && book["modified"] == modified)
+        return id;
+    const QString digest = fileDigest(file.absoluteFilePath());
+    if (digest.isEmpty())
+        return {};
+    // Books added before 0.4 have only the id, which is the digest's start.
+    const QString known = book["sha256"].toString();
+    if (known.isEmpty() ? digest.left(16) != id : digest != known)
+        return digest.left(16);
+    if (record)
+        update([&](QVariantList &books) {
+            for (auto &value : books) {
+                auto entry = value.toMap();
+                if (entry["id"] != id)
+                    continue;
+                entry["sha256"] = digest;
+                entry["size"] = file.size();
+                entry["modified"] = modified;
+                value = entry;
+            }
+        });
+    return id;
+}
+
+void Library::markRevision(const QString &oldId, const QString &newId) {
+    update([&](QVariantList &books) {
+        for (auto &value : books) {
+            auto entry = value.toMap();
+            if (entry["id"] == oldId)
+                entry["replacedBy"] = newId;
+            else if (entry["id"] == newId)
+                entry["revisionOf"] = oldId;
+            else
+                continue;
+            value = entry;
         }
     });
 }

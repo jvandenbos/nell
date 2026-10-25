@@ -19,8 +19,10 @@ public:
     // Unpacks the book into directory with bsdtar, which already refuses
     // absolute paths and "..", so a hostile archive can't write outside it.
     // The archive lands in a sibling first and is renamed into place, so a
-    // half-unpacked book is never mistaken for a whole one.
-    static bool extract(const QString &file, const QString &directory, QString *error);
+    // half-unpacked book is never mistaken for a whole one. With a digest
+    // (the file's SHA-256), an earlier unpacking is reused only if it was
+    // of that same file; otherwise it's unpacked again.
+    static bool extract(const QString &file, const QString &directory, QString *error, const QString &digest = {});
 
     bool load(const QString &directory, QString *error);
 
