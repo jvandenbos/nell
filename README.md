@@ -97,6 +97,25 @@ bin/test      # the Qt Test suite, offscreen
 bin/install   # build and install the Arch package, so it's in the app launcher
 ```
 
+## Documentation
+
+- [Architecture](docs/architecture.md): how the pieces fit, and how a place in a book is stored
+- [File formats](docs/file-formats.md): the library and annotation JSON, and the settings
+- [Releasing](docs/releasing.md): versioning and cutting a release
+
+## Install
+
+On Arch or Omarchy, from a clone:
+
+```sh
+git clone https://github.com/jvandenbos/quire.git
+cd quire
+bin/install   # builds, then makepkg -si (asks for sudo)
+```
+
+Depends on `qt6-base`, `qt6-declarative`, `qt6-svg`, `qt6-wayland`,
+`poppler-qt6`, `libarchive`, and `xdg-desktop-portal`.
+
 ## License
 
 MIT. The theme watcher, translator, and portal file chooser come from Omacut,

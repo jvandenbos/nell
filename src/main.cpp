@@ -28,7 +28,7 @@ int main(int argc, char *argv[]) {
 
     QGuiApplication app(argc, argv);
     app.setApplicationName("quire");
-    app.setApplicationVersion("0.1.0");
+    app.setApplicationVersion(QUIRE_VERSION);
 
     // Matches the window to quire.desktop, so the compositor (Wayland app_id)
     // and the launcher pick up the installed icon.

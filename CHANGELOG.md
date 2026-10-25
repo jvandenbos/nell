@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Architecture, file-format, and release docs under `docs/`.
+- `bin/check-version`, run by `bin/test`: fails when `quire.pro`, the PKGBUILD,
+  and this changelog disagree on the version.
+
+### Changed
+
+- The version is set once in `quire.pro` and compiled in, not written into `main.cpp`.
+
 ## [0.1.0] - 2026-10-23
 
 ### Added
@@ -22,3 +32,6 @@ All notable changes to this project are documented here. The format follows
   pages left and Kindle-style locations.
 - `quire list`, `add`, `info`, `notes`, and `skill` commands for scripts and agents.
 - Danish, Dutch, French, German, and Spanish translations.
+
+[Unreleased]: https://github.com/jvandenbos/quire/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/jvandenbos/quire/releases/tag/v0.1.0
