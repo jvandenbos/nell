@@ -34,3 +34,13 @@ A package published for others (the AUR, a repository) would need a
 GitHub, with its `sha256sums`; a `build()` in `$srcdir` from that source in a
 clean directory, not the checkout; and a `check()` running the suite, which
 covers `nell --version`, the commands, and the window starting.
+
+## The Omarchy package
+
+The published recipe is `pkgbuilds/nell/` in
+[omacom/omarchy-pkgs](https://github.com/omacom/omarchy-pkgs) (submitted as
+PR #1674 on 2026-10-26). It builds from the `vX.Y.Z` tag's tarball and runs
+`bin/test` as `check()`, and its upstream watch follows this repository's
+tags, so a pushed release tag is picked up by their bot without another PR.
+It deliberately omits the local recipe's `conflicts`/`replaces` on `quire`:
+that name belongs to an unrelated AUR package.
