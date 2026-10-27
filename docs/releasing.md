@@ -22,6 +22,17 @@ The version is written in three places, and `bin/check-version` (run by
 4. `bin/install`, then `nell --version` to confirm the installed binary.
 5. Commit as `Release x.y.z`, run `git tag -a vx.y.z -m "Nell x.y.z"`, and
    `git push --follow-tags`.
+6. Publish the GitHub Release from the tag, with the changelog section as
+   its notes, so the releases page is not a list of bare tags:
+
+   ```sh
+   awk '/^## \[x\.y\.z\]/{f=1;next} /^## \[/{f=0} f' CHANGELOG.md > /tmp/nell-notes.md
+   gh release create vx.y.z --verify-tag --latest --title "Nell x.y.z" --notes-file /tmp/nell-notes.md
+   ```
+
+   `--verify-tag` refuses if the tag has not been pushed; `--latest` keeps
+   the newest version pinned at the top. 0.1.0 to 0.3.0 were created this
+   way after the fact on 2026-10-26.
 
 ## The PKGBUILD is a local recipe
 
