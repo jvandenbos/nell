@@ -7,7 +7,11 @@ fit text, two-column pages, time left learned from the reader's own pace, a
 dictionary with a Words list, and a JSON command line. What's below is the
 rest.
 
-## Done or in progress (round 1, 2026-11-02)
+## Done (round 1, 2026-11-02)
+
+All seven shipped on 2026-11-02: footnotes, lightbox, hyphenation, OPDS
+catalogs, the reading ruler, page peek (`` ` `` tap to pin and return, hold to
+peek), and the reading record with its badges and `nell stats`.
 
 Table stakes, in every one of Readest, Foliate and KOReader (the first two in
 Apple Books as well):

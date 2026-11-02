@@ -8,6 +8,25 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Footnote references open their note in a card beside the reference, with
+  "Go to Note" (`Reader.isNoteRef`, `Reader.footnote`).
+- Pictures open full-window on a click, with zoom (`Reader.imageAt`).
+- Hyphenation, from TeX's patterns bundled for en, de, fr, es, nl and da
+  (`Hyphenator`, `Preferences.hyphenate`, on by default). Stored offsets never
+  move: soft hyphens are mapped out of every position.
+- A reading ruler: `R`, then `↓` and `↑` move it a line (`Reader.lines`,
+  `Preferences.ruler`).
+- Page peek: `` ` `` pins the page and returns to it, hold to peek
+  (`Reader.pin`, `returnToPin`, `pinned`, `pinPage`). A jump from the
+  contents, a link, a search result or a bookmark pins the place it left.
+- A reading record in `reading.json`: time and characters read per day and
+  per book, today's minutes against `Preferences.dailyGoal`, the streak, the
+  week, the year, and badges (`ReadingRecord`); the Reading panel (`S` in the
+  library) and `nell stats`. A finished book gets `finishedOn`.
+- OPDS catalogs (`BookCatalog`, `C` in the library): Calibre's content server
+  and any other feed; browse, search, download into
+  `Preferences.downloadDirectory` and add to the library. Logins in
+  `catalogs.json`, mode 0600.
 - Leaving out running heads and feet in fit text is its own setting
   (`Preferences.hideRunningHeads`, on by default), so it can be undone without
   turning fit text off.

@@ -41,10 +41,13 @@ way is finished by the next one; problems go to stderr.
 | `theme.{h,cpp}` | Watches the Omarchy theme directory and exposes its colors, accent, and window rounding live. |
 | `translator.{h,cpp}` | A `QTranslator` that reads `src/i18n/<lang>.json`, keyed by the English source string, with CLDR plural forms. Follows the Omarchy language live. |
 | `dictionary.{h,cpp}` | Fetches a definition from Wiktionary. Only the selected word goes out, and only on request. |
+| `hyphenator.{h,cpp}`, `hyphen/` | Liang's algorithm over TeX's `hyph-utf8` patterns, bundled for en-US, en-GB, de, fr, es, nl and da (licences in `hyphen/LICENSES.md`). The Reader inserts soft hyphens into each chapter and keeps a map from document positions to the positions without them, so every stored offset, selection and search result is in clean coordinates; a `/usr/share/hyphen/hyph_*.dic` is used for a language that isn't bundled. |
+| `record.{h,cpp}` | The reading record, `reading.json`: seconds and characters per day and per book, written read-merge-write under a lock like the library. Derives today against the goal, streaks, the week, the year and the badges; emits `goalReached` and `badgeEarned`. The Reader feeds it from the page timer: a page left in under five seconds was flipped (time counts, characters don't), one held past ten minutes was a break (nothing counts). |
+| `catalog.{h,cpp}` | `BookCatalog`: OPDS feeds parsed with `QXmlStreamReader`; navigation, paging, OpenSearch; Basic or Digest login answered from `catalogs.json`; thumbnails cached; downloads saved to the downloads folder and added to the library. **Named `BookCatalog`, not `Catalog`** — Poppler exports a `Catalog` class, and an executable's `Catalog::~Catalog` interposes it, so closing a PDF would jump into ours. |
 | `portalfilepicker.{h,cpp}`, `filepicker.h` | The native file chooser through the desktop portal. |
 | `cli.{h,cpp}` | The headless commands, each with a `--json` form. |
 | `skill.md` | The agent skill `nell skill install` writes out. |
-| `*.qml` | The interface: `Main.qml` switches between `LibraryView` and `ReaderView`; the panels (contents, search, appearance, notes) are separate files. |
+| `*.qml` | The interface: `Main.qml` switches between `LibraryView`, `CatalogView` and `ReaderView`; the panels (contents, search, appearance, notes, the Reading panel, the footnote card, the lightbox) are separate files. |
 
 ## Places in a book
 

@@ -33,6 +33,9 @@ errors to stderr.
 - `nell import <file>` — read back a `nell notes --json` export, merged with
   any notes already saved for that book. Only when the person asks to restore
   notes.
+- `nell stats` — today's reading minutes against the daily goal, the
+  streak, the week, books finished this year and in all, hours read, and the
+  badges earned. `--json` gives the numbers.
 - `nell open [book]` — open the reader for the person. It needs their
   desktop, so do not wait on it.
 

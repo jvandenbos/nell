@@ -32,6 +32,24 @@ looked up, and your highlights and notes exportable as Markdown.
   Everything undoes.
 - **Finding.** Contents, bookmarks, notes, and words in one panel; full-text
   search of the whole book.
+- **Footnotes and pictures.** A footnote reference opens its note in a card
+  beside it, with a way to the note itself. A picture opens full-window, and
+  zooms.
+- **Hyphenation.** Words break at the ends of lines as in a printed book, from
+  TeX's patterns for English, German, French, Spanish, Dutch, and Danish,
+  bundled; a book in another language is set without. Off in Appearance.
+- **Reading ruler.** `R` puts a band on the line being read and dims the rest;
+  `↓` and `↑` then move it a line at a time, turning the page at the ends.
+- **Page peek.** `` ` `` pins the page; look anywhere, press it again to come
+  back. Held down, it comes back on release. A chip at the foot of the page
+  is the way back with the mouse.
+- **A reading record.** The time spent on pages and the pages turned, day by
+  day, from which come today's minutes against a daily goal, the streak, the
+  week, the year's books and hours, and badges. `S` in the library, or
+  `nell stats`. Nothing leaves the machine.
+- **Catalogs.** Books from Calibre's content server, Kavita, Project
+  Gutenberg, or any OPDS feed: browse, search, and get; a book got lands in
+  the library. `C` in the library.
 - **Knowing where you are.** The bottom-left corner shows one of five things —
   time left in the chapter, time left in the book, pages left in the chapter,
   the Kindle-style location (the page, in a PDF), or the percent read. Click it
@@ -58,6 +76,8 @@ Press `?` in the app to see them all.
 | `/` `Ctrl+F` | Search the book |
 | `A` | Appearance |
 | `Ctrl++` `Ctrl+−` | Bigger or smaller text |
+| `R` | Reading ruler; `↓` `↑` then move it a line |
+| `` ` `` | Pin the page and press again to come back; hold to peek |
 | `B` | Bookmark the page |
 | `H` / `N` / `D` | Highlight (in the last color used), note, or look up the selection |
 | `Tab` | Show the controls and move through them |
@@ -70,6 +90,8 @@ Press `?` in the app to see them all.
 | `Space` `Enter` | Open the selected book |
 | `Ctrl+O` | Add books |
 | `/` `Ctrl+F` | Find a book |
+| `S` | Reading goal, streak, and badges |
+| `C` | Catalogs |
 | `Delete` | Remove the selected book from the library |
 | `F11` `F` | Full screen |
 | `Ctrl+Q` `Q` | Quit |
@@ -89,6 +111,7 @@ nell list                 # the library, most recently read first
 nell add <file>...        # add EPUB and PDF books
 nell info <book>          # title, author, and contents
 nell notes <book>         # highlights and notes as Markdown (--json for data)
+nell stats                # today's reading, the streak, the week, the badges
 ```
 
 ## Where things are kept
@@ -97,12 +120,21 @@ nell notes <book>         # highlights and notes as Markdown (--json for data)
 - `~/.local/share/nell/books/<id>.json` — each book's place, bookmarks,
   highlights, notes, and looked-up words. Removing a book from the library
   keeps this, so adding it again brings them back.
-- `~/.cache/nell/` — unpacked EPUBs and covers; safe to delete.
-- `~/.config/nell/nell.conf` — appearance settings and your learned reading speed.
+- `~/.local/share/nell/reading.json` — the reading record: seconds and
+  characters read, per day and per book.
+- `~/.local/share/nell/catalogs.json` — the catalogs and their logins,
+  readable by you alone.
+- `~/Documents/Books/` — where books got from a catalog are saved (a setting
+  on the Catalogs page).
+- `~/.cache/nell/` — unpacked EPUBs, covers, and catalog thumbnails; safe to
+  delete.
+- `~/.config/nell/nell.conf` — appearance settings, the daily goal, and your
+  learned reading speed.
 
-Both JSON files carry a `version` field for their format.
+Every JSON file carries a `version` field for its format.
 
-Looking up a word sends that word, and nothing else, to Wiktionary.
+Looking up a word sends that word, and nothing else, to Wiktionary. A catalog
+is only spoken to while you browse it. The reading record stays on the machine.
 
 ## Building
 

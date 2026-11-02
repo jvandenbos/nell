@@ -1,4 +1,16 @@
 {
+  "%n books": {
+    "one": "%n book",
+    "other": "%n books"
+  },
+  "%n books finished": {
+    "one": "%n book finished",
+    "other": "%n books finished"
+  },
+  "%n days": {
+    "one": "%n day",
+    "other": "%n days"
+  },
   "%n failed": {
     "one": "%n failed",
     "other": "%n failed"
@@ -15,12 +27,28 @@
     "one": "%n min",
     "other": "%n min"
   },
+  "%n min to go today": {
+    "one": "%n min to go today",
+    "other": "%n min to go today"
+  },
   "%n pages left in chapter": {
     "one": "%n page left in chapter",
     "other": "%n pages left in chapter"
   },
+  "%n-day streak": {
+    "one": "%n-day streak",
+    "other": "%n-day streak"
+  },
   "Added %n books": {
     "one": "Added %n book",
     "other": "Added %n books"
+  },
+  "Longest: %n days": {
+    "one": "Longest: %n day",
+    "other": "Longest: %n days"
+  },
+  "Reading: %n-day streak (S)": {
+    "one": "Reading: %n-day streak (S)",
+    "other": "Reading: %n-day streak (S)"
   }
 }

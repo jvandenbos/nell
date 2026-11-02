@@ -132,6 +132,36 @@ or location (EPUB), never by an EPUB page number, and includes each
 highlight's color and note, the bookmarks, and the Words list with
 definitions and context.
 
+## `~/.local/share/nell/reading.json`
+
+The reading record, format `version` 1. One object per local calendar day:
+
+```json
+{
+  "version": 1,
+  "days": {
+    "2026-11-02": {
+      "seconds": 1842.5,
+      "characters": 61200,
+      "books": { "185ba6d26bea9946": { "seconds": 1842.5, "characters": 61200 } }
+    }
+  }
+}
+```
+
+`seconds` is time spent on pages, `characters` the text turned past. Written
+like the library: locked, reread, this reading's share added, so two Nells
+both count. A page left in under five seconds adds its time but not its
+characters; a page held past ten minutes adds nothing.
+
+## `~/.local/share/nell/catalogs.json`
+
+The OPDS catalogs, format `version` 1, mode 0600 because the login is in it:
+
+```json
+{ "version": 1, "catalogs": [ { "name": "Calibre", "url": "http://host:8080/opds", "user": "jan", "password": "…" } ] }
+```
+
 ## `~/.config/nell/nell.conf`
 
 Qt `QSettings` INI. `version` (under `[General]`) is the settings format
