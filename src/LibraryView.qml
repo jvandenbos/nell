@@ -54,6 +54,7 @@ Item {
     Shortcut { context: Qt.ApplicationShortcut; sequence: "Space"; enabled: view.visible && grid.activeFocus; onActivated: view.openCurrent() }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "/"; enabled: view.visible && !win.textEntry; onActivated: search.forceActiveFocus() }
     Shortcut { context: Qt.ApplicationShortcut; sequence: StandardKey.Find; enabled: view.visible; onActivated: search.forceActiveFocus() }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "S"; enabled: view.visible && !win.textEntry && !win.helpVisible; onActivated: statsPanel.show(grid) }
     Shortcut {
         context: Qt.ApplicationShortcut
         sequences: [StandardKey.Delete, "Backspace"]
@@ -127,12 +128,21 @@ Item {
                     currentIndex: Math.max(0, ["recent", "title", "author"].indexOf(prefs.librarySort))
                     onActivated: prefs.librarySort = currentValue
                 }
-                AccentButton {
+                RowLayout {
                     Layout.row: 0
                     Layout.column: view.narrow ? 1 : 3
                     Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-                    text: qsTr("Add Books")
-                    onClicked: win.pickBooks()
+                    spacing: 4
+                    IconButton {
+                        iconName: "stats"
+                        iconColor: record.stats.today.goalMet ? Tokens.accentText : Tokens.text
+                        tip: record.stats.streak > 0 ? qsTr("Reading: %n-day streak (S)", "", record.stats.streak) : qsTr("Reading goal and streak (S)")
+                        onClicked: statsPanel.show(grid)
+                    }
+                    AccentButton {
+                        text: qsTr("Add Books")
+                        onClicked: win.pickBooks()
+                    }
                 }
             }
 
@@ -395,6 +405,8 @@ Item {
         }
         MenuItem { text: qsTr("Remove from Library…"); onTriggered: removeDialog.ask(contextMenu.book) }
     }
+
+    StatsPanel { id: statsPanel }
 
     Dialog {
         id: removeDialog

@@ -67,6 +67,7 @@ Popup {
         ["Arrows", qsTr("Move between books")],
         ["Ctrl+O", qsTr("Add books")],
         ["/  Ctrl+F", qsTr("Find in the library")],
+        ["S", qsTr("Reading goal, streak, and badges")],
         ["Delete", qsTr("Remove the selected book from the library")]
     ]
     readonly property var commonKeys: [

@@ -189,6 +189,13 @@ ApplicationWindow {
         }
     }
 
+    // Milestones as they happen, in the corner, without stopping the page.
+    Connections {
+        target: record
+        function onGoalReached() { toast.show(qsTr("Today's reading goal met")) }
+        function onBadgeEarned(name) { toast.show(qsTr("Badge earned: %1").arg(name)) }
+    }
+
     HelpOverlay { id: help; reading: win.reading }
     Toast { id: toast }
 }

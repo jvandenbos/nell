@@ -21,6 +21,7 @@
         <file alias="FocusRing.qml">FocusRing.qml</file>
         <file alias="FootnotePopup.qml">FootnotePopup.qml</file>
         <file alias="Lightbox.qml">Lightbox.qml</file>
+        <file alias="StatsPanel.qml">StatsPanel.qml</file>
         <file alias="GoToDialog.qml">GoToDialog.qml</file>
         <file alias="qmldir">qmldir</file>
         <file alias="skill.md">skill.md</file>
