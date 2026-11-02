@@ -81,6 +81,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- A publisher's page break before a chapter's first words or after its last
+  (Gutenberg puts both around its cover) no longer leaves a blank page: the
+  chapter already starts on a page of its own. Breaks in between still take.
+- A cover with whitespace beside it in its wrapper (Gutenberg's) was laid out
+  as a line of text, taller than the page: a blank page followed it.
 - `nell --version`, `--help`, a mistyped option, and the commands that only
   read (`list`, `info`, `notes`, `skill`) no longer move Quire's library. It
   moves when the window opens or `nell add` writes, each part (data,

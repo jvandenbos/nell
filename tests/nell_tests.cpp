@@ -254,6 +254,63 @@ private slots:
         QVERIFY(!reader.notesMarkdown().contains(QChar(QChar::SoftHyphen)));
     }
 
+    void publishersPageBreaksLeaveNoBlankPages()
+    {
+        // Gutenberg wraps a cover in page-break-after and starts its header
+        // with page-break-before: neither may cost a page, since a chapter
+        // already begins on its own.
+        const int plain = pagesOf({}, "<p>Title page</p>", "<p>The end</p>");
+        QVERIFY(plain > 2);
+        QCOMPARE(pagesOf({}, "<p style=\"page-break-before: always\">Title page</p>",
+                         "<p style=\"page-break-after: always\">The end</p>"),
+                 plain);
+
+        // A break between chapters in one file still starts a page: the
+        // heading is first on its page, the words before it on the one before.
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(library.add(
+            makeEpub(dir.path(), "The Test Book", "<h2 style=\"page-break-before: always\">Chapter Three</h2>"))));
+        reader.setGeometry(400, 500, 1, 0);
+        reader.search("Chapter Three");
+        QCOMPARE(reader.searchResults().size(), 1);
+        const auto hit = reader.searchResults()[0].toMap();
+        reader.goTo(hit["chapter"].toInt(), hit["start"].toInt());
+        const int heading = reader.page();
+        reader.goTo(hit["chapter"].toInt(), hit["start"].toInt() - 1);
+        QCOMPARE(heading, reader.page() + 1);
+    }
+
+    void aPictureAloneOnItsLineFillsThePage()
+    {
+        // A cover fills its page and the text starts on the next. Whitespace
+        // beside the picture (Gutenberg's cover wrapper has some) changes
+        // nothing; it used to make the line taller than the page, which left
+        // a blank page after the cover.
+        QCOMPARE(pagesOf({}, "<div><img src=\"../cover.png\"/></div>"), pagesOf({}) + 1);
+        for (const QByteArray &opening : {QByteArray("<div><img src=\"../cover.png\"/></div>"),
+                                          QByteArray("<div>\n  <img src=\"../cover.png\"/>\n</div>\n")}) {
+            QTemporaryDir dir;
+            Library library(dir.path() + "/data", dir.path() + "/cache");
+            Preferences preferences(nullptr, dir.path() + "/nell.conf");
+            Reader reader(&library, &preferences);
+            QVERIFY(reader.openBook(library.add(makeEpub(dir.path(), "The Test Book", {}, opening))));
+            reader.setGeometry(400, 500, 1, 0);
+            reader.goTo(1, 0);
+            const int cover = reader.page();
+            // The cover's page holds one line, most of the page tall.
+            QCOMPARE(reader.lines().size(), 1);
+            QVERIFY(reader.lines()[0].toMap()["height"].toDouble() > 450);
+            // The next page opens with the heading, taller than the body lines under it.
+            reader.goToPage(cover + 1);
+            const QVariantList lines = reader.lines();
+            QVERIFY(lines.size() > 5);
+            QVERIFY(lines[0].toMap()["height"].toDouble() > lines[1].toMap()["height"].toDouble());
+        }
+    }
+
     void footnotesAreFoundAndRead()
     {
         QTemporaryDir dir;
@@ -1634,9 +1691,24 @@ private:
         file.write(contents);
     }
 
+    // How many pages the test book runs to at 400 by 500, with extras in the
+    // middle of chapter two and opening and closing at its ends.
+    static int pagesOf(const QByteArray &extras, const QByteArray &opening = {}, const QByteArray &closing = {})
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        Reader reader(&library, &preferences);
+        if (!reader.openBook(library.add(makeEpub(dir.path(), "The Test Book", extras, opening, closing))))
+            return -1;
+        reader.setGeometry(400, 500, 1, 0);
+        return reader.pageCount();
+    }
+
     // A small EPUB 3 with a nav document, two chapters, an anchor, and a cover.
     static QString makeEpub(const QString &directory, const QByteArray &title = "The Test Book",
-                            const QByteArray &extras = {})
+                            const QByteArray &extras = {}, const QByteArray &opening = {},
+                            const QByteArray &closing = {})
     {
         const QString root = directory + "/source";
         write(root + "/mimetype", "application/epub+zip");
@@ -1671,14 +1743,16 @@ private:
         for (int i = 0; i < 40; ++i)
             filler += "<p>Alice was beginning to get very tired of sitting by her sister on the bank, and of having "
                       "nothing to do: once or twice she had peeped into the book her sister was reading.</p>\n";
-        auto chapter = [&](const QByteArray &title, const QByteArray &middle) {
+        auto chapter = [&](const QByteArray &title, const QByteArray &middle, const QByteArray &first = {},
+                           const QByteArray &last = {}) {
             return "<?xml version=\"1.0\"?>\n<html xmlns=\"http://www.w3.org/1999/xhtml\"><head>"
-                   "<link rel=\"stylesheet\" type=\"text/css\" href=\"../style.css\"/></head><body><h1>" + title + "</h1>" +
-                   filler + middle + filler + "</body></html>";
+                   "<link rel=\"stylesheet\" type=\"text/css\" href=\"../style.css\"/></head><body>" + first + "<h1>" + title +
+                   "</h1>" + filler + middle + filler + last + "</body></html>";
         };
         write(root + "/OEBPS/text/one.xhtml", chapter("Chapter One", "<p>A jar of ORANGE MARMALADE.</p>"));
         write(root + "/OEBPS/text/two.xhtml",
-              chapter("Chapter Two", "<h2 id=\"section\">A Section</h2><p>More marmalade here.</p>" + extras));
+              chapter("Chapter Two", "<h2 id=\"section\">A Section</h2><p>More marmalade here.</p>" + extras, opening,
+                      closing));
         QImage cover(60, 90, QImage::Format_RGB32);
         cover.fill(Qt::darkBlue);
         cover.save(root + "/OEBPS/cover.png");

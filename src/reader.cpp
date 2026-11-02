@@ -391,6 +391,29 @@ void Reader::loadChapters() {
                 }
             }
         }
+        // A chapter already starts on a page of its own, so a publisher's
+        // page break before its first words or after its last (Gutenberg
+        // puts both around a cover) would only leave a blank page. Breaks
+        // in between stay: a file holding several chapters means them.
+        const auto empty = [](const QTextBlock &block) { return block.text().trimmed().isEmpty(); };
+        const auto dropBreak = [&](const QTextBlock &block, QTextFormat::PageBreakFlags flags) {
+            QTextBlockFormat blockFormat = block.blockFormat();
+            if (!(blockFormat.pageBreakPolicy() & flags))
+                return;
+            blockFormat.setPageBreakPolicy(blockFormat.pageBreakPolicy() & ~flags);
+            cursor.setPosition(block.position());
+            cursor.setBlockFormat(blockFormat);
+        };
+        for (QTextBlock block = document->begin(); block.isValid(); block = block.next()) {
+            dropBreak(block, QTextFormat::PageBreak_AlwaysBefore);
+            if (!empty(block))
+                break;
+        }
+        for (QTextBlock block = document->lastBlock(); block.isValid(); block = block.previous()) {
+            dropBreak(block, QTextFormat::PageBreak_AlwaysAfter);
+            if (!empty(block))
+                break;
+        }
         cursor.endEditBlock();
         m_anchors << anchors;
         // After the anchors, which are offsets in the text as the book has
@@ -486,7 +509,10 @@ void Reader::styleChapters() {
                 format.setProperty(OriginalAlignment, int(format.alignment()));
             const auto original = Qt::Alignment(format.intProperty(OriginalAlignment));
             const bool flowing = !(original & (Qt::AlignHCenter | Qt::AlignRight));
-            const bool imageOnly = block.length() == 2 && block.text().at(0) == QChar::ObjectReplacementCharacter;
+            // Whitespace beside the picture (Gutenberg's cover wrapper has
+            // some) doesn't make it any less alone on its line.
+            const QString bare = block.text().trimmed();
+            const bool imageOnly = bare.size() == 1 && bare.at(0) == QChar::ObjectReplacementCharacter;
             if (imageOnly)
                 format.setAlignment(Qt::AlignHCenter);
             else if (flowing)
