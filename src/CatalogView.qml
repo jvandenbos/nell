@@ -107,9 +107,6 @@ Item {
         model: catalog.catalogs
         currentIndex: 0
         keyNavigationEnabled: true
-        Keys.onReturnPressed: if (currentIndex >= 0) catalog.open(currentIndex)
-        Keys.onEnterPressed: if (currentIndex >= 0) catalog.open(currentIndex)
-        Keys.onSpacePressed: if (currentIndex >= 0) catalog.open(currentIndex)
         Accessible.role: Accessible.List
         Accessible.name: qsTr("Catalogs")
 
@@ -188,9 +185,6 @@ Item {
         Accessible.name: catalog.title
         onAtYEndChanged: if (atYEnd && catalog.hasMore && !catalog.busy) catalog.more()
         onModelChanged: if (!catalog.busy) currentIndex = 0
-        Keys.onReturnPressed: if (currentItem) currentItem.act()
-        Keys.onEnterPressed: if (currentItem) currentItem.act()
-        Keys.onSpacePressed: if (currentItem) currentItem.act()
 
         Label {
             anchors.centerIn: parent
@@ -207,7 +201,12 @@ Item {
             readonly property string getUrl: modelData.epub.length ? modelData.epub : modelData.pdf
             readonly property var progress: catalog.downloads[getUrl]
             readonly property bool downloading: progress !== undefined
+            // The row has the keyboard when it's current, so the keys are
+            // answered here: Enter gets a book or follows a feed.
             function act() { if (book) catalog.get(index); else catalog.browse(modelData.url) }
+            Keys.onReturnPressed: act()
+            Keys.onEnterPressed: act()
+            Keys.onSpacePressed: act()
             width: entries.width
             height: book ? Math.max(104, body.implicitHeight + 24) : 52
             highlighted: ListView.isCurrentItem
