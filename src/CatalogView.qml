@@ -119,7 +119,13 @@ Item {
                 visible: catalog.catalogs.length === 0
                 wrapMode: Text.Wrap
                 color: Tokens.textSecondary
-                text: qsTr("No catalogs yet. A catalog is a server that offers books as an OPDS feed: Calibre's content server (http://your-computer:8080/opds), Kavita, Standard Ebooks, Project Gutenberg, and others.")
+                text: qsTr("No catalogs. A catalog is a server that offers books as an OPDS feed: Calibre's content server (http://your-computer:8080/opds), Kavita, Standard Ebooks, and others.")
+            }
+            AccentButton {
+                visible: catalog.builtInMissing
+                text: qsTr("Add the built-in catalogs")
+                Accessible.name: qsTr("Add the built-in catalogs: Project Gutenberg, ManyBooks, Unglue.it, textos.info and Ebooks libres et gratuits")
+                onClicked: { catalog.addBuiltIn(); shelves.forceActiveFocus() }
             }
             RowLayout {
                 width: parent.width

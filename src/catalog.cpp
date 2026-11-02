@@ -18,6 +18,8 @@
 #include <QTextDocumentFragment>
 #include <QXmlStreamReader>
 
+#include <algorithm>
+
 namespace {
 const char *const Acquisition = "http://opds-spec.org/acquisition";
 
@@ -55,11 +57,58 @@ BookCatalog::BookCatalog(Library *library, Preferences *preferences, const QStri
     load();
 }
 
+// Catalogs that answer without a login and hand over EPUBs, so there's
+// something to browse before anyone types an address. Each was walked down
+// to a book and the book fetched on 2026-11-02; one that goes dark gets
+// removed from the user's list like any other.
+QVariantList BookCatalog::builtIn() {
+    const auto entry = [](const char *name, const char *url) {
+        return QVariant(QVariantMap{{"name", name}, {"url", url}, {"user", ""}, {"password", ""}});
+    };
+    return {entry("Project Gutenberg", "https://m.gutenberg.org/ebooks.opds/?format=opds"),
+            entry("ManyBooks", "https://manybooks.net/opds/index.php"),
+            entry("Unglue.it", "https://unglue.it/api/opds/"),
+            entry("textos.info (Spanish)", "https://www.textos.info/catalogo.atom"),
+            entry("Ebooks libres et gratuits (French)", "https://www.ebooksgratuits.com/opds/")};
+}
+
 void BookCatalog::load() {
+    // No file yet means the built-in list; the first add or remove writes
+    // the file, and from then on the file is the list, however short.
+    if (!QFileInfo::exists(m_path)) {
+        m_catalogs = builtIn();
+        return;
+    }
     const Store store = Library::readStore(m_path);
     if (!store.writable() && m_library)
         m_library->reportStorageProblem(store.problem);
     m_catalogs = store.object["catalogs"].toArray().toVariantList();
+}
+
+bool BookCatalog::builtInMissing() const {
+    const QVariantList shipped = builtIn();
+    return std::any_of(shipped.begin(), shipped.end(), [this](const QVariant &catalog) {
+        const QString url = catalog.toMap()["url"].toString();
+        return std::none_of(m_catalogs.begin(), m_catalogs.end(),
+                            [&url](const QVariant &mine) { return mine.toMap()["url"].toString() == url; });
+    });
+}
+
+void BookCatalog::addBuiltIn() {
+    const QVariantList before = m_catalogs;
+    for (const QVariant &catalog : builtIn()) {
+        const QString url = catalog.toMap()["url"].toString();
+        if (std::none_of(m_catalogs.begin(), m_catalogs.end(),
+                         [&url](const QVariant &mine) { return mine.toMap()["url"].toString() == url; }))
+            m_catalogs << catalog;
+    }
+    if (m_catalogs.size() == before.size())
+        return;
+    if (!save()) {
+        m_catalogs = before;
+        return;
+    }
+    emit catalogsChanged();
 }
 
 bool BookCatalog::save() {

@@ -497,6 +497,31 @@ private slots:
         preferences.setDownloadDirectory(dir.path() + "/downloads");
         BookCatalog catalog(&library, &preferences, dir.path() + "/data", dir.path() + "/cache");
         QSignalSpy feed(&catalog, &BookCatalog::feedChanged);
+
+        // A fresh install starts with the built-in catalogs, each a public
+        // https feed; taking them off sticks, and they can be had back.
+        const QVariantList shipped = BookCatalog::builtIn();
+        QVERIFY(shipped.size() >= 3);
+        for (const QVariant &entry : shipped) {
+            const QVariantMap catalogEntry = entry.toMap();
+            QVERIFY2(!catalogEntry["name"].toString().isEmpty(), "a built-in catalog without a name");
+            QCOMPARE(QUrl(catalogEntry["url"].toString()).scheme(), QString("https"));
+        }
+        QCOMPARE(catalog.catalogs(), shipped);
+        QVERIFY(!catalog.builtInMissing());
+        QVERIFY(!QFile::exists(dir.path() + "/data/catalogs.json"));
+        catalog.remove(0);
+        QVERIFY(catalog.builtInMissing());
+        QVERIFY(QFile::exists(dir.path() + "/data/catalogs.json"));
+        QCOMPARE(BookCatalog(&library, &preferences, dir.path() + "/data", dir.path() + "/cache").catalogs().size(), shipped.size() - 1);
+        catalog.addBuiltIn();
+        QVERIFY(!catalog.builtInMissing());
+        QCOMPARE(catalog.catalogs().size(), shipped.size());
+        QCOMPARE(catalog.catalogs().last().toMap()["url"], shipped[0].toMap()["url"]);
+        while (!catalog.catalogs().isEmpty())
+            catalog.remove(0);
+        QCOMPARE(BookCatalog(&library, &preferences, dir.path() + "/data", dir.path() + "/cache").catalogs().size(), 0);
+
         QVERIFY(!catalog.add("", "not a url", "", ""));
         QVERIFY(catalog.add("Shelf", fileUrl("root.xml").toString(), "me", "secret"));
         QCOMPARE(catalog.catalogs().size(), 1);

@@ -31,6 +31,8 @@ class BookCatalog : public QObject {
     Q_PROPERTY(QString error READ error NOTIFY errorChanged)
     // Downloads under way, by acquisition URL, each 0..1.
     Q_PROPERTY(QVariantMap downloads READ downloads NOTIFY downloadsChanged)
+    // True while any built-in catalog is off the list, so it can be offered back.
+    Q_PROPERTY(bool builtInMissing READ builtInMissing NOTIFY catalogsChanged)
 
 public:
     static constexpr int FormatVersion = 1;
@@ -48,7 +50,12 @@ public:
     bool busy() const { return m_busy; }
     QString error() const { return m_error; }
     QVariantMap downloads() const { return m_downloads; }
+    bool builtInMissing() const;
 
+    // The catalogs a fresh install starts with: public, free, no login.
+    static QVariantList builtIn();
+    // Puts back whichever built-in catalogs are missing, at the end of the list.
+    Q_INVOKABLE void addBuiltIn();
     // Saves a catalog and opens it. The password is kept with it, in a
     // file only this user can read.
     Q_INVOKABLE bool add(const QString &name, const QString &url, const QString &user, const QString &password);

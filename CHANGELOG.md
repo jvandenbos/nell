@@ -26,7 +26,9 @@ All notable changes to this project are documented here. The format follows
 - OPDS catalogs (`BookCatalog`, `C` in the library): Calibre's content server
   and any other feed; browse, search, download into
   `Preferences.downloadDirectory` and add to the library. Logins in
-  `catalogs.json`, mode 0600.
+  `catalogs.json`, mode 0600. Five free catalogs are built in (Project
+  Gutenberg, ManyBooks, Unglue.it, textos.info, Ebooks libres et gratuits)
+  until the list is first changed; a button puts any missing one back.
 - Leaving out running heads and feet in fit text is its own setting
   (`Preferences.hideRunningHeads`, on by default), so it can be undone without
   turning fit text off.

@@ -156,7 +156,11 @@ characters; a page held past ten minutes adds nothing.
 
 ## `~/.local/share/nell/catalogs.json`
 
-The OPDS catalogs, format `version` 1, mode 0600 because the login is in it:
+The OPDS catalogs, format `version` 1, mode 0600 because the login is in it.
+No file means the built-in list (`BookCatalog::builtIn()`); the first add or
+remove writes the file, and from then on the file is the whole list, even
+when empty. "Add the built-in catalogs" on the Catalogs page puts missing
+ones back.
 
 ```json
 { "version": 1, "catalogs": [ { "name": "Calibre", "url": "http://host:8080/opds", "user": "jan", "password": "…" } ] }

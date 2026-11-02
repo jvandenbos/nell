@@ -47,9 +47,11 @@ looked up, and your highlights and notes exportable as Markdown.
   day, from which come today's minutes against a daily goal, the streak, the
   week, the year's books and hours, and badges. `S` in the library, or
   `nell stats`. Nothing leaves the machine.
-- **Catalogs.** Books from Calibre's content server, Kavita, Project
-  Gutenberg, or any OPDS feed: browse, search, and get; a book got lands in
-  the library. `C` in the library.
+- **Catalogs.** Books from Calibre's content server, Kavita, or any OPDS
+  feed: browse, search, and get; a book got lands in the library. Five
+  free catalogs come built in — Project Gutenberg, ManyBooks, Unglue.it,
+  textos.info (Spanish) and Ebooks libres et gratuits (French) — so there's
+  something to read before you add your own. `C` in the library.
 - **Knowing where you are.** The bottom-left corner shows one of five things —
   time left in the chapter, time left in the book, pages left in the chapter,
   the Kindle-style location (the page, in a PDF), or the percent read. Click it
@@ -123,7 +125,8 @@ nell stats                # today's reading, the streak, the week, the badges
 - `~/.local/share/nell/reading.json` — the reading record: seconds and
   characters read, per day and per book.
 - `~/.local/share/nell/catalogs.json` — the catalogs and their logins,
-  readable by you alone.
+  readable by you alone. Until the list is first changed there is no file,
+  and the built-in catalogs are the list.
 - `~/Documents/Books/` — where books got from a catalog are saved (a setting
   on the Catalogs page).
 - `~/.cache/nell/` — unpacked EPUBs, covers, and catalog thumbnails; safe to
