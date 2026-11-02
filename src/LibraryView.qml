@@ -55,6 +55,7 @@ Item {
     Shortcut { context: Qt.ApplicationShortcut; sequence: "/"; enabled: view.visible && !win.textEntry; onActivated: search.forceActiveFocus() }
     Shortcut { context: Qt.ApplicationShortcut; sequence: StandardKey.Find; enabled: view.visible; onActivated: search.forceActiveFocus() }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "S"; enabled: view.visible && !win.textEntry && !win.helpVisible; onActivated: statsPanel.show(grid) }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "C"; enabled: view.visible && !win.textEntry && !win.helpVisible; onActivated: win.openCatalogs() }
     Shortcut {
         context: Qt.ApplicationShortcut
         sequences: [StandardKey.Delete, "Backspace"]
@@ -133,6 +134,11 @@ Item {
                     Layout.column: view.narrow ? 1 : 3
                     Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
                     spacing: 4
+                    IconButton {
+                        iconName: "cloud"
+                        tip: qsTr("Catalogs: Calibre and other OPDS servers (C)")
+                        onClicked: win.openCatalogs()
+                    }
                     IconButton {
                         iconName: "stats"
                         iconColor: record.stats.today.goalMet ? Tokens.accentText : Tokens.text

@@ -32,6 +32,18 @@ ApplicationWindow {
                                            && (activeFocusItem.objectName === "page" || activeFocusItem.objectName === "shelf")
     // Set while the file chooser is out to find a moved book, not add new ones.
     property string locateId: ""
+    // The catalogs are a view of their own in the library's place.
+    property bool catalogOpen: false
+
+    function openCatalogs() {
+        catalogOpen = true
+        catalogView.focusList()
+    }
+    function closeCatalogs() {
+        catalog.leave()
+        catalogOpen = false
+        libraryView.focusGrid()
+    }
 
     function openBook(id) {
         const book = library.book(id)
@@ -46,7 +58,10 @@ ApplicationWindow {
 
     function closeBook() {
         reader.close()
-        libraryView.focusGrid()
+        if (catalogOpen)
+            catalogView.focusList()
+        else
+            libraryView.focusGrid()
     }
 
     function pickBooks() {
@@ -139,10 +154,19 @@ ApplicationWindow {
         LibraryView {
             id: libraryView
             anchors.fill: parent
-            visible: !win.reading
+            visible: !win.reading && !win.catalogOpen
             enabled: visible
             onOpenRequested: id => win.openBook(id)
             onLocateRequested: id => win.locate(id)
+        }
+
+        CatalogView {
+            id: catalogView
+            anchors.fill: parent
+            visible: !win.reading && win.catalogOpen
+            enabled: visible
+            onCloseRequested: win.closeCatalogs()
+            onOpenRequested: id => win.openBook(id)
         }
 
         Loader {
@@ -186,6 +210,13 @@ ApplicationWindow {
                     color: Tokens.accentText
                 }
             }
+        }
+    }
+
+    Connections {
+        target: catalog
+        function onDownloaded(id, title) {
+            toast.show(qsTr("Added “%1” to the library").arg(title), { actionText: qsTr("Open"), action: () => win.openBook(id), timeout: 8000 })
         }
     }
 
