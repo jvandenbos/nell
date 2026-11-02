@@ -21,6 +21,7 @@ HEADERS += \
     src/portalfilepicker.h \
     src/preferences.h \
     src/reader.h \
+    src/record.h \
     src/theme.h \
     src/translator.h
 
@@ -35,6 +36,7 @@ SOURCES += \
     src/portalfilepicker.cpp \
     src/preferences.cpp \
     src/reader.cpp \
+    src/record.cpp \
     src/theme.cpp \
     src/translator.cpp
 

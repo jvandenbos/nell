@@ -4,8 +4,10 @@
 #include "library.h"
 #include "preferences.h"
 #include "reader.h"
+#include "record.h"
 
 #include <QCommandLineParser>
+#include <QDate>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -261,6 +263,50 @@ int skill(const QStringList &arguments) {
 }
 }
 
+QString hours(double hours) {
+    return hours < 10 ? QString::number(hours, 'f', 1) + " hr" : QString::number(qRound(hours)) + " hr";
+}
+
+int stats(const QStringList &arguments) {
+    Command command("stats", "Print today's reading against the daily goal, the streak, the week, and the badges.");
+    if (!command.parse(arguments))
+        return fail(command.parser.errorText());
+    if (command.parser.isSet("help"))
+        return print(stdout, command.parser.helpText()), 0;
+    Library library;
+    Preferences preferences(nullptr);
+    ReadingRecord record(&library, &preferences);
+    const QVariantMap stats = record.stats();
+    if (command.parser.isSet("json")) {
+        print(QJsonObject::fromVariantMap(stats));
+        return 0;
+    }
+    const auto today = stats["today"].toMap();
+    const auto year = stats["year"].toMap();
+    const auto total = stats["total"].toMap();
+    print(stdout, QString("Today      %1 min of %2%3")
+                      .arg(today["minutes"].toInt())
+                      .arg(today["goal"].toInt())
+                      .arg(today["goalMet"].toBool() ? "  ✓" : ""));
+    print(stdout, QString("Streak     %1 days (longest %2)").arg(stats["streak"].toInt()).arg(stats["longestStreak"].toInt()));
+    QStringList week;
+    for (const auto &day : stats["week"].toList())
+        week << QString("%1 %2").arg(QDate::fromString(day.toMap()["date"].toString(), Qt::ISODate).toString("ddd"))
+                                .arg(day.toMap()["minutes"].toInt(), 3);
+    print(stdout, "Week       " + week.join("  "));
+    print(stdout, QString("This year  %1 books finished, %2").arg(year["books"].toInt()).arg(hours(year["hours"].toDouble())));
+    print(stdout, QString("All time   %1 books, %2 over %3 days")
+                      .arg(total["books"].toInt())
+                      .arg(hours(total["hours"].toDouble()))
+                      .arg(total["days"].toInt()));
+    QStringList earned;
+    for (const auto &badge : stats["badges"].toList())
+        if (badge.toMap()["earned"].toBool())
+            earned << badge.toMap()["name"].toString();
+    print(stdout, "Badges     " + (earned.isEmpty() ? QString("none yet") : earned.join(", ")));
+    return 0;
+}
+
 QString cliSummary() {
     return "Commands:\n"
            "  open [book]                     Open the reader, or a book in it (the default)\n"
@@ -269,6 +315,7 @@ QString cliSummary() {
            "  info <book>                     Print a book's title, author, and contents\n"
            "  notes <book> [--markdown]       Print a book's highlights, notes, and words\n"
            "  import <file>                   Read back notes exported with notes --json\n"
+           "  stats                           Today's reading, the streak, the week, the badges\n"
            "  skill [install]                 Print the skill for coding agents, or install it\n"
            "Every command takes --json and --help.";
 }
@@ -283,7 +330,7 @@ void adoptQuireStorage() {
 }
 
 bool isCliCommand(const QString &word) {
-    return QStringList{"list", "add", "info", "notes", "import", "skill", "help", "--help", "-h"}.contains(word);
+    return QStringList{"list", "add", "info", "notes", "import", "stats", "skill", "help", "--help", "-h"}.contains(word);
 }
 
 int runCli(const QStringList &arguments) {
@@ -293,6 +340,7 @@ int runCli(const QStringList &arguments) {
            : command == "info"  ? info(arguments)
            : command == "notes" ? notes(arguments)
            : command == "import" ? importNotes(arguments)
+           : command == "stats" ? stats(arguments)
            : command == "skill" ? skill(arguments)
                                 : (print(stdout, "Usage: nell [command] [book]\n\n" + cliSummary()), 0);
 }

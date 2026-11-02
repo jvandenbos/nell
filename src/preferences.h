@@ -36,6 +36,7 @@ class Preferences : public QObject {
     Q_PROPERTY(bool reduceMotion READ reduceMotion WRITE setReduceMotion NOTIFY reduceMotionChanged)
     // A band across the line being read, the rest of the page dimmed.
     Q_PROPERTY(bool ruler READ ruler WRITE setRuler NOTIFY rulerChanged)
+    Q_PROPERTY(int dailyGoal READ dailyGoal WRITE setDailyGoal NOTIFY goalChanged)
 
 public:
     // The settings file's own format version, kept as `version` in it.
@@ -84,6 +85,9 @@ public:
     void setReduceMotion(bool reduce);
     bool ruler() const { return m_ruler; }
     void setRuler(bool ruler);
+    // Minutes of reading a day to aim for, 5 to 600.
+    int dailyGoal() const { return m_dailyGoal; }
+    void setDailyGoal(int minutes);
 
     // Characters read per second, learned from page turns like Kindle does,
     // so "minutes left" is about this reader rather than an average one.
@@ -98,6 +102,7 @@ signals:
     void librarySortChanged();
     void infoModeChanged();
     void storageProblemChanged();
+    void goalChanged();
     void highlightColorChanged();
     void reduceMotionChanged();
     void rulerChanged();
@@ -126,5 +131,6 @@ private:
     QString m_storageProblem;
     QString m_highlightColor;
     bool m_reduceMotion;
+    int m_dailyGoal = 30;
     bool m_ruler;
 };

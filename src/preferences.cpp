@@ -63,6 +63,7 @@ Preferences::Preferences(Theme *theme, const QString &file, QObject *parent)
     m_highlightColor = m_settings.value("reading/highlightColor", "yellow").toString();
     m_reduceMotion = m_settings.value("ui/reduceMotion", false).toBool();
     m_ruler = m_settings.value("reading/ruler", false).toBool();
+    m_dailyGoal = qBound(5, m_settings.value("reading/dailyGoalMinutes", 30).toInt(), 600);
 
     const QStringList installed = QFontDatabase::families();
     for (const char *family : {"Literata", "Charter", "Georgia", "EB Garamond", "Crimson Pro", "Noto Serif", "C059",
@@ -239,6 +240,15 @@ void Preferences::setRuler(bool ruler) {
     m_ruler = ruler;
     store("reading/ruler", ruler);
     emit rulerChanged();
+}
+
+void Preferences::setDailyGoal(int minutes) {
+    minutes = qBound(5, minutes, 600);
+    if (minutes == m_dailyGoal)
+        return;
+    m_dailyGoal = minutes;
+    store("reading/dailyGoalMinutes", minutes);
+    emit goalChanged();
 }
 
 void Preferences::setReduceMotion(bool reduce) {

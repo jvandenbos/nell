@@ -341,8 +341,10 @@ void Library::touch(const QString &id, double progress) {
                 book["progress"] = progress;
                 book["opened"] = opened;
             }
-            if (progress >= 0.995)
+            if (progress >= 0.995 && !book["finished"].toBool()) {
                 book["finished"] = true;
+                book["finishedOn"] = opened;
+            }
             value = book;
         }
     });

@@ -85,6 +85,7 @@ public:
     QString findId(const QString &pathOrId) const;
 
     QString cacheRoot() const { return m_cacheDirectory; }
+    QString dataRoot() const { return m_dataDirectory; }
     QString cacheDirectory(const QString &id) const { return m_cacheDirectory + "/" + id; }
     // A book's notes as stored. Unknown fields are kept, so writing back
     // what was read loses nothing a newer Nell added.

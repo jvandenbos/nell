@@ -16,6 +16,7 @@
 #include "library.h"
 #include "preferences.h"
 #include "reader.h"
+#include "record.h"
 #include "theme.h"
 #include "translator.h"
 
@@ -338,6 +339,92 @@ private slots:
         // A jump that goes nowhere pins nothing.
         reader.goToPage(reader.page());
         QVERIFY(!reader.pinned());
+    }
+
+    void readingIsCountedDayByDay()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        preferences.setDailyGoal(5);
+        // Two days of reading before today, written as Nell writes them.
+        QJsonObject days;
+        for (int i = 1; i <= 2; ++i)
+            days[QDate::currentDate().addDays(-i).toString(Qt::ISODate)] = QJsonObject{{"seconds", 600}, {"characters", 9000}};
+        QVERIFY(Library::writeJson(dir.path() + "/data/reading.json", {{"version", 1}, {"days", days}}));
+
+        ReadingRecord record(&library, &preferences, dir.path() + "/data");
+        QSignalSpy goal(&record, &ReadingRecord::goalReached);
+        QSignalSpy badge(&record, &ReadingRecord::badgeEarned);
+        auto stats = record.stats();
+        // Yesterday's streak still stands today, until midnight.
+        QCOMPARE(stats["streak"].toInt(), 2);
+        QCOMPARE(stats["today"].toMap()["minutes"].toInt(), 0);
+        QCOMPARE(stats["week"].toList().size(), 7);
+        QCOMPARE(stats["week"].toList()[6].toMap()["minutes"].toInt(), 0);
+        QCOMPARE(stats["week"].toList()[5].toMap()["minutes"].toInt(), 10);
+
+        record.add("book", 200, 3000);
+        record.add("book", 0, 100);      // nothing
+        record.add("book", 1200, 100);   // a break, not reading
+        record.add("other", 130, 2000);
+        stats = record.stats();
+        QCOMPARE(stats["today"].toMap()["minutes"].toInt(), 5);
+        QVERIFY(stats["today"].toMap()["goalMet"].toBool());
+        QCOMPARE(goal.count(), 1);
+        QCOMPARE(stats["streak"].toInt(), 3);
+        QCOMPARE(stats["longestStreak"].toInt(), 3);
+        QCOMPARE(stats["total"].toMap()["days"].toInt(), 3);
+        QCOMPARE(record.bookSeconds("book"), 200.0);
+        // Three days running earns the three-day badge, and nothing else yet.
+        QCOMPARE(badge.count(), 1);
+        QStringList earned;
+        for (const auto &b : stats["badges"].toList())
+            if (b.toMap()["earned"].toBool())
+                earned << b.toMap()["id"].toString();
+        QCOMPARE(earned, QStringList{"streak-3"});
+
+        // Another Nell's reading today is kept, not written over.
+        ReadingRecord other(&library, &preferences, dir.path() + "/data");
+        other.add("book", 60, 500);
+        record.add("book", 60, 500);
+        QCOMPARE(record.stats()["today"].toMap()["minutes"].toInt(), 7);
+        QCOMPARE(ReadingRecord(&library, &preferences, dir.path() + "/data").bookSeconds("book"), 320.0);
+    }
+
+    void theReaderRecordsItsPages()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        ReadingRecord record(&library, &preferences, dir.path() + "/data");
+        Reader reader(&library, &preferences);
+        reader.setRecord(&record);
+        const QString id = library.add(makeEpub(dir.path()));
+        QVERIFY(reader.openBook(id));
+        reader.setGeometry(400, 500, 1, 0);
+        QTest::qWait(20);
+        reader.next();
+        reader.next();
+        reader.close();
+        QVERIFY(record.bookSeconds(id) > 0);
+        QVERIFY(QFile::exists(dir.path() + "/data/reading.json"));
+
+        // Finishing a book dates it, once.
+        library.touch(id, 1.0);
+        const QString finishedOn = library.book(id)["finishedOn"].toString();
+        QVERIFY(!finishedOn.isEmpty());
+        QTest::qWait(1100);
+        library.touch(id, 1.0);
+        QCOMPARE(library.book(id)["finishedOn"].toString(), finishedOn);
+        QCOMPARE(record.stats()["total"].toMap()["books"].toInt(), 1);
+        QCOMPARE(record.stats()["year"].toMap()["books"].toInt(), 1);
+
+        auto run = runNell(dir.path(), {"stats"});
+        QVERIFY2(run.code == 0, run.err.constData());
+        QVERIFY2(run.out.startsWith("Today"), run.out.constData());
+        auto json = runNell(dir.path(), {"stats", "--json"});
+        QVERIFY(QJsonDocument::fromJson(json.out).object().contains("badges"));
     }
 
     void linesOfTextAreListedForTheRuler()

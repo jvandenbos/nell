@@ -21,6 +21,7 @@
 class BookDocument;
 class ImageHandler;
 class Library;
+class ReadingRecord;
 class Preferences;
 class QPainter;
 namespace Poppler { class Document; }
@@ -105,6 +106,8 @@ public:
     static constexpr double SmallPrintPixels = 12.5;
 
     Reader(Library *library, Preferences *preferences, QObject *parent = nullptr);
+    // Where the time spent on pages is counted; none means it isn't.
+    void setRecord(ReadingRecord *record) { m_record = record; }
     ~Reader() override;
 
     Q_INVOKABLE bool openBook(const QString &id);
@@ -316,6 +319,8 @@ private:
     QList<QRectF> pdfRects(int page, int start, int end) const;
     QString textOf(int chapter, int start, int end) const;
     void trackReading(int fromPage);
+    // Counts the time on the page being left, when the page isn't being read on from.
+    void spendTime();
     double unreadOfPage() const;
     bool bookmarkInView(const QJsonObject &bookmark) const;
     void annotationsEdited();
@@ -326,6 +331,7 @@ private:
     bool save();
 
     Library *m_library;
+    ReadingRecord *m_record = nullptr;
     Preferences *m_preferences;
     QString m_id, m_path, m_format, m_title, m_author, m_language, m_error;
     QString m_previousRevision;

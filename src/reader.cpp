@@ -2,6 +2,7 @@
 
 #include "hyphenator.h"
 #include "library.h"
+#include "record.h"
 #include "preferences.h"
 
 #include <QAbstractTextDocumentLayout>
@@ -613,6 +614,7 @@ void Reader::measurePdf() {
 void Reader::close() {
     if (!isOpen())
         return;
+    spendTime();
     save();
     m_id.clear();
     m_chapters.clear();
@@ -807,7 +809,7 @@ void Reader::previous() {
         return;
     if (m_pinned && !m_pinByHand)
         unpin();
-    m_pageTimer.restart();
+    spendTime();
     if (m_slice > 0) {
         setSlice(m_slice - 1);
         return;
@@ -1017,7 +1019,7 @@ void Reader::goToPage(int page) {
     if (!isOpen())
         return;
     jump([&] {
-        m_pageTimer.restart();
+        spendTime();
         setPage(page, false);
     });
 }
@@ -1078,7 +1080,7 @@ void Reader::goTo(int chapter, int offset) {
     if (!isOpen())
         return;
     jump([&] {
-        m_pageTimer.restart();
+        spendTime();
         m_chapter = qBound(0, chapter, int(m_chapterPaths.size()) - 1);
         m_offset = qMax(0, offset);
         setPage(pageOf(m_chapter, m_offset), true);
@@ -1256,6 +1258,15 @@ void Reader::trackReading(int fromPage) {
     }
     if (seconds > 4 && seconds < 600 && characters > 200)
         m_preferences->learnReadingSpeed(characters / seconds);
+    // A page turned in a few seconds was flipped past, not read.
+    if (m_record && !m_readOnly)
+        m_record->add(m_id, seconds, seconds > 4 ? characters : 0);
+}
+
+void Reader::spendTime() {
+    const double seconds = m_pageTimer.restart() / 1000.0;
+    if (m_record && !m_readOnly && isOpen())
+        m_record->add(m_id, seconds, 0);
 }
 
 QVariantList Reader::lines() const {
