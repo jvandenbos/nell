@@ -12,6 +12,7 @@
 #include <QSizeF>
 #include <QTimer>
 #include <QVariantList>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -88,6 +89,14 @@ class Reader : public QObject {
     // libhyphen dictionary installed), so the Hyphenate switch can say when
     // it has nothing to work with.
     Q_PROPERTY(bool hyphenationAvailable READ hyphenationAvailable NOTIFY openChanged)
+    // A place kept to come back to: set by hand to peek elsewhere, or by
+    // any jump (contents, search, a link, Go To) so there's a way back.
+    // A jump's pin goes once a page is turned from where it landed.
+    Q_PROPERTY(bool pinned READ pinned NOTIFY pinChanged)
+    Q_PROPERTY(int pinPage READ pinPage NOTIFY pinChanged)
+    // The lines of text in view, as bands across their column, for the
+    // reading ruler: {x, y, width, height} in the view's coordinates.
+    Q_PROPERTY(QVariantList lines READ lines NOTIFY positionChanged)
 
 public:
     static constexpr int CharactersPerLocation = 150;
@@ -118,6 +127,20 @@ public:
     Q_INVOKABLE void goTo(int chapter, int offset);
     // Follows an internal link; returns an external URL for QML to open.
     Q_INVOKABLE QString follow(const QString &href);
+    // Whether a link (as linkAt gives it) is a footnote reference: marked
+    // as one by the book, or a short numbered or starred link to an anchor.
+    Q_INVOKABLE bool isNoteRef(const QString &href) const;
+    // The note a reference points at: its text, or an empty map.
+    Q_INVOKABLE QVariantMap footnote(const QString &href) const;
+    // The picture at a point in an EPUB page, as a file in the unpacked book.
+    QString imageAt(int column, const QPointF &point) const;
+
+    Q_INVOKABLE void pin();
+    Q_INVOKABLE void unpin();
+    Q_INVOKABLE void returnToPin();
+    bool pinned() const { return m_pinned; }
+    int pinPage() const;
+    QVariantList lines() const;
 
     Q_INVOKABLE void toggleBookmark();
     Q_INVOKABLE void removeBookmark(int index);
@@ -222,6 +245,7 @@ public:
 
 signals:
     void openChanged();
+    void pinChanged();
     // Opening oldId found its file changed, so newId, a new library entry
     // for what's there now, was opened instead. oldId keeps its notes.
     void fileChanged(const QString &oldId, const QString &newId);
@@ -264,6 +288,9 @@ private:
     bool keepColors() const;
     void paginate();
     void setPage(int page, bool keepPlace);
+    // Around a jump: the place before it is pinned if nothing is, and the
+    // page differs afterwards.
+    void jump(const std::function<void()> &move);
     void setSlice(int slice);
     void applyColumns();
     void measurePdf();
@@ -310,6 +337,7 @@ private:
     QCache<QString, QImage> m_bookImages;
     ImageHandler *m_imageHandler;
     QList<QHash<QString, int>> m_anchors;
+    QList<QSet<QString>> m_noteRefs;
     QList<qint64> m_charactersBefore;
     qint64 m_characterCount = 0;
     QList<int> m_pageStart;
@@ -348,6 +376,10 @@ private:
     int m_page = 0;
     int m_chapter = 0;
     int m_offset = 0;
+    bool m_pinned = false;
+    bool m_pinByHand = false;
+    bool m_returning = false;
+    int m_pinChapter = 0, m_pinOffset = 0;
     QElapsedTimer m_pageTimer;
 
     QJsonArray m_bookmarks, m_highlights, m_vocabulary;

@@ -62,6 +62,7 @@ Preferences::Preferences(Theme *theme, const QString &file, QObject *parent)
     m_readingSpeed = qBound(3.0, m_settings.value("reading/speed", 22.0).toDouble(), 200.0);
     m_highlightColor = m_settings.value("reading/highlightColor", "yellow").toString();
     m_reduceMotion = m_settings.value("ui/reduceMotion", false).toBool();
+    m_ruler = m_settings.value("reading/ruler", false).toBool();
 
     const QStringList installed = QFontDatabase::families();
     for (const char *family : {"Literata", "Charter", "Georgia", "EB Garamond", "Crimson Pro", "Noto Serif", "C059",
@@ -230,6 +231,14 @@ void Preferences::setHighlightColor(const QString &color) {
     m_highlightColor = color;
     m_settings.setValue("reading/highlightColor", color);
     emit highlightColorChanged();
+}
+
+void Preferences::setRuler(bool ruler) {
+    if (ruler == m_ruler)
+        return;
+    m_ruler = ruler;
+    store("reading/ruler", ruler);
+    emit rulerChanged();
 }
 
 void Preferences::setReduceMotion(bool reduce) {

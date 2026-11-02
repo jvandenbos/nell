@@ -40,6 +40,10 @@ signals:
     void selectionFinished();
     void highlightClicked(const QString &id);
     void externalLink(const QString &url);
+    // A footnote reference, with where it was clicked.
+    void noteClicked(const QString &href, double x, double y);
+    // A picture in the page, as a file.
+    void imageClicked(const QString &path);
 
 protected:
     void geometryChange(const QRectF &newGeometry, const QRectF &oldGeometry) override;

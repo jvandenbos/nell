@@ -104,9 +104,18 @@ void PageView::mouseReleaseEvent(QMouseEvent *event) {
     const int column = m_reader->columnAt(point);
     const QString link = m_reader->linkAt(column, point);
     if (!link.isEmpty()) {
+        if (m_reader->isNoteRef(link) && !m_reader->footnote(link).isEmpty()) {
+            emit noteClicked(link, point.x(), point.y());
+            return;
+        }
         const QString external = m_reader->follow(link);
         if (!external.isEmpty())
             emit externalLink(external);
+        return;
+    }
+    const QString image = m_reader->imageAt(column, point);
+    if (!image.isEmpty()) {
+        emit imageClicked(image);
         return;
     }
     const QString highlight = m_reader->highlightAt(column, point);
@@ -134,7 +143,8 @@ void PageView::hoverMoveEvent(QHoverEvent *event) {
         return;
     const QPointF point = event->position();
     const int column = m_reader->columnAt(point);
-    if (!m_reader->linkAt(column, point).isEmpty() || !m_reader->highlightAt(column, point).isEmpty())
+    if (!m_reader->linkAt(column, point).isEmpty() || !m_reader->highlightAt(column, point).isEmpty() ||
+        !m_reader->imageAt(column, point).isEmpty())
         setCursor(Qt::PointingHandCursor);
     else
         setCursor(Qt::IBeamCursor);

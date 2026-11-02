@@ -34,6 +34,8 @@ class Preferences : public QObject {
     Q_PROPERTY(QString storageProblem READ storageProblem NOTIFY storageProblemChanged)
     Q_PROPERTY(QString highlightColor READ highlightColor WRITE setHighlightColor NOTIFY highlightColorChanged)
     Q_PROPERTY(bool reduceMotion READ reduceMotion WRITE setReduceMotion NOTIFY reduceMotionChanged)
+    // A band across the line being read, the rest of the page dimmed.
+    Q_PROPERTY(bool ruler READ ruler WRITE setRuler NOTIFY rulerChanged)
 
 public:
     // The settings file's own format version, kept as `version` in it.
@@ -80,6 +82,8 @@ public:
     // No sliding page turns or fading chrome.
     bool reduceMotion() const { return m_reduceMotion; }
     void setReduceMotion(bool reduce);
+    bool ruler() const { return m_ruler; }
+    void setRuler(bool ruler);
 
     // Characters read per second, learned from page turns like Kindle does,
     // so "minutes left" is about this reader rather than an average one.
@@ -96,6 +100,7 @@ signals:
     void storageProblemChanged();
     void highlightColorChanged();
     void reduceMotionChanged();
+    void rulerChanged();
 
 private:
     // Every write goes through here, so a file that mustn't be written isn't.
@@ -121,4 +126,5 @@ private:
     QString m_storageProblem;
     QString m_highlightColor;
     bool m_reduceMotion;
+    bool m_ruler;
 };

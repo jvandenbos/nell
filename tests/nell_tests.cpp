@@ -252,6 +252,118 @@ private slots:
         QVERIFY(!reader.notesMarkdown().contains(QChar(QChar::SoftHyphen)));
     }
 
+    void footnotesAreFoundAndRead()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        const QString id = library.add(makeEpub(dir.path(), "The Test Book",
+            "<p>Marked<a epub:type=\"noteref\" href=\"#fn1\">1</a> and plain<a href=\"#fn2\"><sup>2</sup></a> "
+            "and a chapter link <a href=\"one.xhtml\">Chapter One</a>.</p>"
+            "<aside epub:type=\"footnote\" id=\"fn1\"><p>1. The first note, marked by the book.</p></aside>"
+            "<p id=\"fn2\">2.</p><p>The second note sits in the paragraph after its label, which is all there is. "
+            "<a href=\"#ref2\">↩</a></p>"));
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(id));
+        reader.setGeometry(400, 500, 1, 0);
+        const QString two = QDir::cleanPath(library.cacheDirectory(id) + "/OEBPS/text/two.xhtml");
+        QVERIFY(reader.isNoteRef(two + "#fn1"));
+        QVERIFY(reader.isNoteRef(two + "#fn2"));
+        QVERIFY(!reader.isNoteRef(QDir::cleanPath(library.cacheDirectory(id) + "/OEBPS/text/one.xhtml")));
+        QCOMPARE(reader.footnote(two + "#fn1")["text"].toString(), QString("1. The first note, marked by the book."));
+        const QString second = reader.footnote(two + "#fn2")["text"].toString();
+        QVERIFY2(second.startsWith("2.\nThe second note") && !second.contains(QChar(0x21A9)), qPrintable(second));
+        QVERIFY(reader.footnote(two + "#nowhere").isEmpty());
+        QVERIFY(reader.footnote(two).isEmpty());
+    }
+
+    void picturesAreFoundUnderThePointer()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        const QString id = library.add(makeEpub(dir.path(), "The Test Book", "<p><img src=\"../cover.png\"/></p>"));
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(id));
+        reader.setGeometry(400, 500, 1, 0);
+        QCOMPARE(reader.imageAt(0, QPointF(200, 250)), QString());
+        reader.goToToc(1);
+        QString found;
+        for (int i = 0; i < 80 && found.isEmpty() && !reader.atEnd(); ++i) {
+            found = reader.imageAt(0, QPointF(200, 250));
+            if (found.isEmpty())
+                reader.next();
+        }
+        QVERIFY2(found.endsWith("/OEBPS/cover.png"), qPrintable(found));
+        QCOMPARE(reader.imageAt(0, QPointF(2, 2)), QString());
+    }
+
+    void aJumpPinsThePlaceItLeft()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(library.add(makeEpub(dir.path()))));
+        reader.setGeometry(400, 500, 1, 0);
+        reader.next();
+        reader.next();
+        QVERIFY(!reader.pinned());
+        QSignalSpy pins(&reader, &Reader::pinChanged);
+        reader.goToToc(1);
+        QVERIFY(reader.pinned());
+        QCOMPARE(reader.pinPage(), 3);
+        QCOMPARE(pins.size(), 1);
+        // A second jump keeps the first pin; coming back clears it.
+        reader.goToToc(2);
+        QCOMPARE(reader.pinPage(), 3);
+        reader.returnToPin();
+        QCOMPARE(reader.page(), 2);
+        QVERIFY(!reader.pinned());
+        // Turning a page from where a jump landed means reading on from there.
+        reader.goToToc(1);
+        QVERIFY(reader.pinned());
+        reader.next();
+        QVERIFY(!reader.pinned());
+        // A pin set by hand stays through page turns and jumps.
+        reader.pin();
+        const int pinned = reader.page();
+        reader.next();
+        reader.goToPage(0);
+        QVERIFY(reader.pinned());
+        QCOMPARE(reader.pinPage(), pinned + 1);
+        reader.returnToPin();
+        QCOMPARE(reader.page(), pinned);
+        QVERIFY(!reader.pinned());
+        // A jump that goes nowhere pins nothing.
+        reader.goToPage(reader.page());
+        QVERIFY(!reader.pinned());
+    }
+
+    void linesOfTextAreListedForTheRuler()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(library.add(makeEpub(dir.path()))));
+        reader.setGeometry(400, 500, 1, 0);
+        const QVariantList lines = reader.lines();
+        QVERIFY(lines.size() > 10);
+        double last = -1;
+        for (const auto &value : lines) {
+            const auto line = value.toMap();
+            QVERIFY(line["y"].toDouble() >= last);
+            QVERIFY(line["y"].toDouble() >= 0 && line["y"].toDouble() < 500);
+            QVERIFY(line["height"].toDouble() > 10 && line["height"].toDouble() < 80);
+            QCOMPARE(line["width"].toDouble(), 400.0);
+            last = line["y"].toDouble();
+        }
+        QVERIFY(reader.openBook(library.add(makePdf(dir.path() + "/paper.pdf", 2))));
+        reader.setGeometry(600, 800, 1, 0);
+        QCOMPARE(reader.lines().size(), 1);
+    }
+
     void readerPaginatesAndKeepsItsPlace()
     {
         QTemporaryDir dir;
@@ -1288,7 +1400,8 @@ private:
     }
 
     // A small EPUB 3 with a nav document, two chapters, an anchor, and a cover.
-    static QString makeEpub(const QString &directory, const QByteArray &title = "The Test Book")
+    static QString makeEpub(const QString &directory, const QByteArray &title = "The Test Book",
+                            const QByteArray &extras = {})
     {
         const QString root = directory + "/source";
         write(root + "/mimetype", "application/epub+zip");
@@ -1330,7 +1443,7 @@ private:
         };
         write(root + "/OEBPS/text/one.xhtml", chapter("Chapter One", "<p>A jar of ORANGE MARMALADE.</p>"));
         write(root + "/OEBPS/text/two.xhtml",
-              chapter("Chapter Two", "<h2 id=\"section\">A Section</h2><p>More marmalade here.</p>"));
+              chapter("Chapter Two", "<h2 id=\"section\">A Section</h2><p>More marmalade here.</p>" + extras));
         QImage cover(60, 90, QImage::Format_RGB32);
         cover.fill(Qt::darkBlue);
         cover.save(root + "/OEBPS/cover.png");

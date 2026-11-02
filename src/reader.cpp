@@ -146,11 +146,53 @@ QString prepareHtml(QString html) {
         R"(<svg\b[^>]*>.*?<image\b[^>]*?(?:xlink:)?href\s*=\s*["']([^"']+)["'][^>]*>.*?</svg>)",
         QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
     html.replace(svgImage, R"(<img src="\1"/>)");
+    // HTML5's sectioning elements are unknown to Qt, which then treats them
+    // as inline and loses an id set on one (a footnote's <aside>): as
+    // divs, the id lands on the block it starts.
+    static const QRegularExpression sectioning(R"(<(/?)(aside|section|article|nav|figure|figcaption|header|footer|main)\b)",
+                                               QRegularExpression::CaseInsensitiveOption);
+    html.replace(sectioning, R"(<\1div)");
     return html;
 }
 
 constexpr int OriginalAlignment = QTextFormat::UserProperty;
 constexpr int OriginalWidth = QTextFormat::UserProperty + 1;
+
+// A link's target as linkAt reports it: the file's clean path, then the
+// fragment after a '#'.
+QString resolveHref(const QString &chapterPath, const QString &href) {
+    const QUrl resolved = QUrl::fromLocalFile(chapterPath).resolved(QUrl(href));
+    return QDir::cleanPath(resolved.toLocalFile()) + (resolved.hasFragment() ? "#" + resolved.fragment() : QString());
+}
+
+// The footnote references in a chapter's markup. Qt's rich text drops
+// epub:type, so they're read from the HTML itself: a link the book marks
+// as a note reference, or a short numbered, lettered, or starred link to an
+// anchor, which is how most books without the mark set theirs.
+QSet<QString> noteRefsIn(const QString &html, const QString &chapterPath) {
+    static const QRegularExpression link(R"(<a\b([^>]*)>(.*?)</a>)",
+                                         QRegularExpression::CaseInsensitiveOption | QRegularExpression::DotMatchesEverythingOption);
+    static const QRegularExpression hrefAttribute(R"(\bhref\s*=\s*["']([^"']+)["'])", QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression noteType(R"(\b(epub:type|role)\s*=\s*["'][^"']*\b(noteref|doc-noteref)\b)",
+                                             QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression tags("<[^>]*>");
+    static const QRegularExpression refLabel(R"(^[\[(]?(\d{1,4}|[a-z]|[ivxlc]{1,6}|[*†‡§¶]{1,3})[\])]?\.?$)",
+                                             QRegularExpression::CaseInsensitiveOption);
+    QSet<QString> refs;
+    for (auto it = link.globalMatch(html); it.hasNext();) {
+        const auto match = it.next();
+        const auto href = hrefAttribute.match(match.captured(1));
+        if (!href.hasMatch())
+            continue;
+        const QString target = href.captured(1);
+        if (!QUrl(target).scheme().isEmpty() || !target.contains('#'))
+            continue;
+        const QString label = QString(match.captured(2)).remove(tags).simplified();
+        if (noteType.match(match.captured(1)).hasMatch() || refLabel.match(label).hasMatch())
+            refs.insert(resolveHref(chapterPath, QUrl::fromPercentEncoding(target.toUtf8())));
+    }
+    return refs;
+}
 }
 
 Reader::Reader(Library *library, Preferences *preferences, QObject *parent)
@@ -303,6 +345,7 @@ void Reader::loadChapters() {
     m_hyphenating = m_preferences->hyphenate();
     m_chapters.clear();
     m_anchors.clear();
+    m_noteRefs.clear();
     m_hyphenDoc.clear();
     m_hyphenClean.clear();
     m_charactersBefore.clear();
@@ -313,8 +356,11 @@ void Reader::loadChapters() {
         auto document = std::make_unique<BookDocument>(path, m_root, m_keepFonts, m_keepColors);
         document->documentLayout()->registerHandler(QTextFormat::ImageObject, m_imageHandler);
         QFile file(path);
+        QString html;
         if (file.open(QIODevice::ReadOnly))
-            document->setHtml(prepareHtml(QString::fromUtf8(file.readAll())));
+            html = QString::fromUtf8(file.readAll());
+        m_noteRefs << noteRefsIn(html, path);
+        document->setHtml(prepareHtml(html));
 
         // Colors belong to the reading theme, so drop the publisher's unless
         // it's Original, and collect every anchor a link or the table of
@@ -604,6 +650,8 @@ void Reader::close() {
     m_selectionChapter = m_selectionStart = m_selectionEnd = -1;
     m_selectedHighlight.clear();
     m_page = m_chapter = m_offset = 0;
+    m_pinned = m_pinByHand = false;
+    emit pinChanged();
     emit openChanged();
     emit layoutChanged();
     emit positionChanged();
@@ -661,6 +709,8 @@ void Reader::paginate() {
     }
     emit layoutChanged();
     setPage(pageOf(m_chapter, m_offset), true);
+    if (m_pinned)
+        emit pinChanged();
 }
 
 int Reader::pageCount() const {
@@ -742,6 +792,8 @@ void Reader::setPage(int page, bool keepPlace) {
 void Reader::next() {
     if (!isOpen() || atEnd())
         return;
+    if (m_pinned && !m_pinByHand)
+        unpin();
     trackReading(m_page);
     if (m_slice + 1 < sliceCount()) {
         setSlice(m_slice + 1);
@@ -753,6 +805,8 @@ void Reader::next() {
 void Reader::previous() {
     if (!isOpen() || (m_page == 0 && m_slice == 0))
         return;
+    if (m_pinned && !m_pinByHand)
+        unpin();
     m_pageTimer.restart();
     if (m_slice > 0) {
         setSlice(m_slice - 1);
@@ -962,9 +1016,53 @@ int Reader::firstWordInSlice(int page, int slice) const {
 void Reader::goToPage(int page) {
     if (!isOpen())
         return;
-    m_pageTimer.restart();
-    setPage(page, false);
+    jump([&] {
+        m_pageTimer.restart();
+        setPage(page, false);
+    });
 }
+
+void Reader::jump(const std::function<void()> &move) {
+    const bool wasPinned = m_pinned;
+    const int chapter = m_pdf ? m_page : m_chapter, offset = m_offset, before = m_page, slice = m_slice;
+    move();
+    if (wasPinned || m_returning || (m_page == before && m_slice == slice))
+        return;
+    m_pinChapter = chapter;
+    m_pinOffset = offset;
+    m_pinned = true;
+    m_pinByHand = false;
+    emit pinChanged();
+}
+
+void Reader::pin() {
+    if (!isOpen())
+        return;
+    m_pinChapter = m_pdf ? m_page : m_chapter;
+    m_pinOffset = m_pdf && !m_fitText ? 0 : m_offset;
+    m_pinned = true;
+    m_pinByHand = true;
+    emit pinChanged();
+}
+
+void Reader::unpin() {
+    if (!m_pinned)
+        return;
+    m_pinned = false;
+    m_pinByHand = false;
+    emit pinChanged();
+}
+
+void Reader::returnToPin() {
+    if (!m_pinned)
+        return;
+    m_returning = true;
+    goTo(m_pinChapter, m_pinOffset);
+    m_returning = false;
+    unpin();
+}
+
+int Reader::pinPage() const { return m_pinned ? pageOf(m_pinChapter, m_pinOffset) + 1 : 0; }
 
 void Reader::goToEnd() {
     goToPage(pageCount() - 1);
@@ -979,10 +1077,12 @@ void Reader::goToFraction(double fraction) {
 void Reader::goTo(int chapter, int offset) {
     if (!isOpen())
         return;
-    m_pageTimer.restart();
-    m_chapter = qBound(0, chapter, int(m_chapterPaths.size()) - 1);
-    m_offset = qMax(0, offset);
-    setPage(pageOf(m_chapter, m_offset), true);
+    jump([&] {
+        m_pageTimer.restart();
+        m_chapter = qBound(0, chapter, int(m_chapterPaths.size()) - 1);
+        m_offset = qMax(0, offset);
+        setPage(pageOf(m_chapter, m_offset), true);
+    });
 }
 
 void Reader::goToToc(int index) {
@@ -1156,6 +1256,62 @@ void Reader::trackReading(int fromPage) {
     }
     if (seconds > 4 && seconds < 600 && characters > 200)
         m_preferences->learnReadingSpeed(characters / seconds);
+}
+
+QVariantList Reader::lines() const {
+    QVariantList list;
+    if (!isOpen() || pageCount() == 0)
+        return list;
+    auto band = [&](int column, double y, double height) {
+        const QRectF rect = columnRect(column);
+        list << QVariantMap{{"x", rect.x()}, {"y", y}, {"width", rect.width()}, {"height", height}};
+    };
+    for (int column = 0; column < m_columns && m_page + column < pageCount(); ++column) {
+        const int page = m_page + column;
+        if (m_pdf) {
+            // Words that share a line, in the order they sit down the page.
+            const QTransform transform = pdfTransform(column);
+            const auto span = m_fitText ? sliceSpan(page, m_slice) : QPair<double, double>(-1e9, 1e9);
+            QList<QRectF> rows;
+            for (const auto &word : pdfWords(page)) {
+                const QRectF box = word.box;
+                if (box.center().y() < span.first || box.center().y() >= span.second)
+                    continue;
+                bool joined = false;
+                for (auto &row : rows)
+                    if (std::abs(row.center().y() - box.center().y()) < qMax(row.height(), box.height()) / 2) {
+                        row = row.united(box);
+                        joined = true;
+                        break;
+                    }
+                if (!joined)
+                    rows << box;
+            }
+            std::sort(rows.begin(), rows.end(), [](const QRectF &a, const QRectF &b) { return a.top() < b.top(); });
+            for (const auto &row : rows) {
+                const QRectF mapped = transform.mapRect(row);
+                band(column, mapped.top(), mapped.height());
+            }
+            continue;
+        }
+        const int chapter = chapterOfPage(page);
+        const auto *document = m_chapters[chapter].get();
+        const double top = (page - m_pageStart[chapter]) * m_pageSize.height();
+        for (QTextBlock block = document->begin(); block.isValid(); block = block.next()) {
+            const QRectF rect = document->documentLayout()->blockBoundingRect(block);
+            if (rect.bottom() <= top || rect.top() >= top + m_pageSize.height())
+                continue;
+            const QTextLayout *layout = block.layout();
+            for (int i = 0; i < layout->lineCount(); ++i) {
+                const QTextLine line = layout->lineAt(i);
+                const double y = rect.top() + line.y() - top;
+                if (y + line.height() <= 0 || y >= m_pageSize.height())
+                    continue;
+                band(column, y, line.height());
+            }
+        }
+    }
+    return list;
 }
 
 QVariantList Reader::toc() const {
@@ -1430,9 +1586,80 @@ QString Reader::linkAt(int column, const QPointF &point) const {
     const QUrl url(href);
     if (!url.scheme().isEmpty())
         return href;
-    const QUrl resolved = QUrl::fromLocalFile(m_chapterPaths[chapter]).resolved(url);
-    const QString path = resolved.toLocalFile();
-    return QDir::cleanPath(path) + (resolved.hasFragment() ? "#" + resolved.fragment() : QString());
+    return resolveHref(m_chapterPaths[chapter], href);
+}
+
+bool Reader::isNoteRef(const QString &href) const {
+    for (const auto &refs : m_noteRefs)
+        if (refs.contains(href))
+            return true;
+    return false;
+}
+
+QVariantMap Reader::footnote(const QString &href) const {
+    const int hash = href.indexOf('#');
+    if (m_pdf || hash < 0)
+        return {};
+    const int chapter = m_chapterPaths.indexOf(href.left(hash));
+    if (chapter < 0 || !m_anchors[chapter].contains(href.mid(hash + 1)))
+        return {};
+    auto *document = m_chapters[chapter].get();
+    const int offset = m_anchors[chapter].value(href.mid(hash + 1));
+    QTextBlock block = document->findBlock(docPos(chapter, offset));
+    if (!block.isValid())
+        return {};
+    // From the anchor to the end of its paragraph; when that's only a label
+    // ("1.", or an anchor on a wrapper), the paragraphs after it, within reason.
+    QTextCursor cursor(document);
+    cursor.setPosition(docPos(chapter, offset));
+    cursor.setPosition(block.position() + block.length() - 1, QTextCursor::KeepAnchor);
+    QString text = plain(cursor.selectedText());
+    static const QRegularExpression label(R"(^[\[(]?(\d{1,4}|[a-z]|[ivxlc]{1,6}|[*†‡§¶]{1,3})[\])]?\.?\s*)",
+                                          QRegularExpression::CaseInsensitiveOption);
+    int blocks = 1;
+    for (QTextBlock next = block.next(); next.isValid() && blocks < 4 && text.size() < 1500; next = next.next()) {
+        const QString more = plain(next.text());
+        if (more.isEmpty())
+            continue;
+        if (!QString(text).remove(label).simplified().isEmpty())
+            break;
+        text += (text.isEmpty() ? "" : "\n") + more;
+        ++blocks;
+    }
+    text.remove(QChar(0x21A9));  // The ↩ of a return link.
+    text = text.trimmed();
+    if (text.isEmpty())
+        return {};
+    return {{"text", text}, {"href", href}, {"chapter", chapter}, {"offset", offset}};
+}
+
+QString Reader::imageAt(int column, const QPointF &point) const {
+    const int page = m_page + column;
+    if (!isOpen() || m_pdf || page >= pageCount())
+        return {};
+    const int chapter = chapterOfPage(page);
+    auto *document = m_chapters[chapter].get();
+    const double top = (page - m_pageStart[chapter]) * m_pageSize.height();
+    const QPointF local = point - columnRect(column).topLeft() + QPointF(0, top);
+    const int hit = document->documentLayout()->hitTest(local, Qt::FuzzyHit);
+    if (hit < 0)
+        return {};
+    const QTextBlock block = document->findBlock(hit);
+    const QRectF blockRect = document->documentLayout()->blockBoundingRect(block);
+    for (auto it = block.begin(); !it.atEnd(); ++it) {
+        const QTextFragment fragment = it.fragment();
+        if (!fragment.charFormat().isImageFormat() || hit < fragment.position() - 1 || hit > fragment.position() + 1)
+            continue;
+        const int at = fragment.position() - block.position();
+        const QTextLine line = block.layout()->lineForTextPosition(at);
+        if (!line.isValid())
+            continue;
+        const double x1 = line.cursorToX(at), x2 = line.cursorToX(at + 1);
+        const QRectF box(blockRect.left() + qMin(x1, x2), blockRect.top() + line.y(), std::abs(x2 - x1), line.height());
+        if (box.contains(local))
+            return document->imagePath(fragment.charFormat().toImageFormat().name());
+    }
+    return {};
 }
 
 QString Reader::highlightAt(int column, const QPointF &point) const {
