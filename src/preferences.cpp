@@ -52,6 +52,7 @@ Preferences::Preferences(Theme *theme, const QString &file, QObject *parent)
     m_lineSpacing = qBound(1.0, m_settings.value("reading/lineSpacing", 1.1).toDouble(), 2.0);
     // Ragged right by default: justified narrow columns open rivers.
     m_justify = m_settings.value("reading/justify", false).toBool();
+    m_hyphenate = m_settings.value("reading/hyphenate", true).toBool();
     m_margins = qBound(0, m_settings.value("reading/margins", 1).toInt(), 2);
     m_spread = m_settings.value("reading/spread", true).toBool();
     m_hideRunningHeads = m_settings.value("reading/hideRunningHeads", true).toBool();
@@ -148,6 +149,14 @@ void Preferences::setJustify(bool justify) {
         return;
     m_justify = justify;
     store("reading/justify", justify);
+    emit layoutChanged();
+}
+
+void Preferences::setHyphenate(bool hyphenate) {
+    if (hyphenate == m_hyphenate)
+        return;
+    m_hyphenate = hyphenate;
+    store("reading/hyphenate", hyphenate);
     emit layoutChanged();
 }
 

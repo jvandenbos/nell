@@ -22,6 +22,16 @@
         <file alias="GoToDialog.qml">GoToDialog.qml</file>
         <file alias="qmldir">qmldir</file>
         <file alias="skill.md">skill.md</file>
+        <file alias="hyphen/en-US.pat.txt">hyphen/en-US.pat.txt</file>
+        <file alias="hyphen/en-US.hyp.txt">hyphen/en-US.hyp.txt</file>
+        <file alias="hyphen/en-GB.pat.txt">hyphen/en-GB.pat.txt</file>
+        <file alias="hyphen/en-GB.hyp.txt">hyphen/en-GB.hyp.txt</file>
+        <file alias="hyphen/de.pat.txt">hyphen/de.pat.txt</file>
+        <file alias="hyphen/fr.pat.txt">hyphen/fr.pat.txt</file>
+        <file alias="hyphen/es.pat.txt">hyphen/es.pat.txt</file>
+        <file alias="hyphen/nl.pat.txt">hyphen/nl.pat.txt</file>
+        <file alias="hyphen/nl.hyp.txt">hyphen/nl.hyp.txt</file>
+        <file alias="hyphen/da.pat.txt">hyphen/da.pat.txt</file>
         <file alias="i18n/en.json">i18n/en.json</file>
         <file alias="i18n/da.json">i18n/da.json</file>
         <file alias="i18n/de.json">i18n/de.json</file>

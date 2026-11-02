@@ -12,6 +12,7 @@
 
 #include "dictionary.h"
 #include "epub.h"
+#include "hyphenator.h"
 #include "library.h"
 #include "preferences.h"
 #include "reader.h"
@@ -183,6 +184,72 @@ private slots:
         QCOMPARE(byTitle[0].toMap()["title"].toString(), QString("The Test Book"));
         QCOMPARE(byTitle[1].toMap()["title"].toString(), QString("zebra notes"));
         QCOMPARE(library.sorted("recent", "ada").size(), 1);
+    }
+
+    void hyphenatorBreaksWords()
+    {
+        const Hyphenator *english = Hyphenator::forLanguage("en");
+        QVERIFY(english);
+        QCOMPARE(Hyphenator::forLanguage("en-US"), english);
+        // Exceptions win outright; patterns decide the rest.
+        QCOMPARE(english->breaks("table"), (QList<int>{2}));
+        QCOMPARE(english->breaks("Associate"), (QList<int>{2, 4}));
+        const QList<int> breaks = english->breaks("marmalade");
+        QVERIFY(!breaks.isEmpty());
+        for (int at : breaks)
+            QVERIFY2(at >= 2 && at <= 6, qPrintable(QString::number(at)));
+        QVERIFY(english->breaks("the").isEmpty());
+        QVERIFY(english->breaks("tables2").isEmpty());
+        QVERIFY(Hyphenator::forLanguage("en-GB"));
+        QVERIFY(Hyphenator::forLanguage("de-AT"));
+        QVERIFY(Hyphenator::forLanguage("fr"));
+        QVERIFY(!Hyphenator::forLanguage("xx"));
+        QVERIFY(!Hyphenator::forLanguage(""));
+
+        // A libhyphen dictionary reads too, with its hyphenmins.
+        Hyphenator dictionary;
+        QVERIFY(dictionary.loadDictionary("UTF-8\nLEFTHYPHENMIN 1\nRIGHTHYPHENMIN 1\n% comment\n1ma1\nNEXTLEVEL\nxx1xx\n"));
+        QCOMPARE(dictionary.breaks("amam"), (QList<int>{1, 3}));
+    }
+
+    void hyphenationNeverMovesAPlace()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        QVERIFY(preferences.hyphenate());
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(library.add(makeEpub(dir.path()))));
+        reader.setGeometry(400, 500, 1, 0);
+        QVERIFY(reader.hyphenationAvailable());
+        // The same offsets as without hyphenation, and the words whole.
+        reader.select(0, 2, 9);
+        QCOMPARE(reader.selectionText(), QString("Chapter One"));
+        reader.search("beginning");
+        QVERIFY(reader.searchResults().size() >= 2);
+        const auto hit = reader.searchResults()[0].toMap();
+        QCOMPARE(hit["match"].toString(), QString("beginning"));
+        QCOMPARE(hit["end"].toInt() - hit["start"].toInt(), 9);
+        reader.select(0, hit["start"].toInt(), hit["end"].toInt() - 1);
+        QCOMPARE(reader.selectionText(), QString("beginning"));
+        const QString id = reader.highlight("blue");
+        QVERIFY(!id.isEmpty());
+        const int start = reader.highlights()[0].toMap()["start"].toInt();
+        reader.clearSearch();
+
+        // Without hyphenation the highlight is on the same word, at the same offset.
+        preferences.setHyphenate(false);
+        QCOMPARE(reader.highlights()[0].toMap()["start"].toInt(), start);
+        reader.selectHighlight(id);
+        QCOMPARE(reader.selectionText(), QString("beginning"));
+        reader.search("beginning");
+        QCOMPARE(reader.searchResults()[0].toMap()["start"].toInt(), start);
+        preferences.setHyphenate(true);
+        reader.selectHighlight(id);
+        QCOMPARE(reader.selectionText(), QString("beginning"));
+        reader.search("beginning");
+        QCOMPARE(reader.searchResults()[0].toMap()["start"].toInt(), start);
+        QVERIFY(!reader.notesMarkdown().contains(QChar(QChar::SoftHyphen)));
     }
 
     void readerPaginatesAndKeepsItsPlace()

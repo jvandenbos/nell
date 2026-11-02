@@ -21,6 +21,7 @@ class Preferences : public QObject {
     Q_PROPERTY(int fontSize READ fontSize WRITE setFontSize NOTIFY layoutChanged)
     Q_PROPERTY(double lineSpacing READ lineSpacing WRITE setLineSpacing NOTIFY layoutChanged)
     Q_PROPERTY(bool justify READ justify WRITE setJustify NOTIFY layoutChanged)
+    Q_PROPERTY(bool hyphenate READ hyphenate WRITE setHyphenate NOTIFY layoutChanged)
     Q_PROPERTY(int margins READ margins WRITE setMargins NOTIFY layoutChanged)
     Q_PROPERTY(bool spread READ spread WRITE setSpread NOTIFY layoutChanged)
     // In fit text, leave out a PDF's running heads and feet. Separate from
@@ -60,6 +61,9 @@ public:
     void setLineSpacing(double spacing);
     bool justify() const { return m_justify; }
     void setJustify(bool justify);
+    // Break words at line ends, as a printed book does.
+    bool hyphenate() const { return m_hyphenate; }
+    void setHyphenate(bool hyphenate);
     int margins() const { return m_margins; }
     void setMargins(int margins);
     bool spread() const { return m_spread; }
@@ -106,6 +110,7 @@ private:
     int m_fontSize;
     double m_lineSpacing;
     bool m_justify;
+    bool m_hyphenate;
     int m_margins;
     bool m_spread;
     bool m_hideRunningHeads;

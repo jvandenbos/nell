@@ -15,6 +15,7 @@ HEADERS += \
     src/dictionary.h \
     src/epub.h \
     src/filepicker.h \
+    src/hyphenator.h \
     src/library.h \
     src/pageview.h \
     src/portalfilepicker.h \
@@ -28,6 +29,7 @@ SOURCES += \
     src/cli.cpp \
     src/dictionary.cpp \
     src/epub.cpp \
+    src/hyphenator.cpp \
     src/library.cpp \
     src/pageview.cpp \
     src/portalfilepicker.cpp \

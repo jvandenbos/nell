@@ -84,6 +84,10 @@ class Reader : public QObject {
     Q_PROPERTY(bool notesLocked READ notesLocked NOTIFY openChanged)
     Q_PROPERTY(int slice READ slice NOTIFY positionChanged)
     Q_PROPERTY(int sliceCount READ sliceCount NOTIFY positionChanged)
+    // Whether this book's language has hyphenation patterns (bundled, or a
+    // libhyphen dictionary installed), so the Hyphenate switch can say when
+    // it has nothing to work with.
+    Q_PROPERTY(bool hyphenationAvailable READ hyphenationAvailable NOTIFY openChanged)
 
 public:
     static constexpr int CharactersPerLocation = 150;
@@ -204,6 +208,7 @@ public:
     void setFitTextMode(const QString &mode);
     int slice() const { return m_slice; }
     int sliceCount() const;
+    bool hyphenationAvailable() const;
     // The part of the current PDF page in view, top and bottom in points:
     // the slice in fit text, else the whole page.
     QPair<double, double> visibleSpan() const;
@@ -248,6 +253,12 @@ private:
     bool loadEpub(const QString &directory, const QString &digest);
     bool loadPdf(const QString &path);
     void loadChapters();
+    // Soft hyphens go into a chapter's document where its words may break,
+    // and come out of every offset: a stored place never counts them.
+    void hyphenate(BookDocument *document, QList<int> *positions) const;
+    int docPos(int chapter, int offset) const;
+    int cleanPos(int chapter, int position) const;
+    int cleanCount(int chapter) const;
     void styleChapters();
     // The Original theme shows an EPUB in its publisher's colors.
     bool keepColors() const;
@@ -304,6 +315,10 @@ private:
     QList<int> m_pageStart;
     bool m_keepFonts = false;
     bool m_keepColors = false;
+    bool m_hyphenating = false;
+    // Per chapter, where soft hyphens sit in the document, and the offset
+    // in the text without them that each one precedes (position - index).
+    QList<QList<int>> m_hyphenDoc, m_hyphenClean;
 
     std::unique_ptr<Poppler::Document> m_pdf;
     mutable QHash<int, QList<Word>> m_pdfWordCache;

@@ -1,5 +1,6 @@
 #include "reader.h"
 
+#include "hyphenator.h"
 #include "library.h"
 #include "preferences.h"
 
@@ -131,8 +132,12 @@ QString now() { return QDateTime::currentDateTimeUtc().toString(Qt::ISODate); }
 QString plain(QString text) {
     text.replace(QChar::ParagraphSeparator, '\n').replace(QChar::LineSeparator, '\n');
     text.remove(QChar::ObjectReplacementCharacter);
+    text.remove(QChar(QChar::SoftHyphen));
     return text.trimmed();
 }
+
+// A soft hyphen sits inside a word, so word boundaries look through it.
+bool isWordChar(QChar c) { return c.isLetterOrNumber() || c == QChar(QChar::SoftHyphen); }
 
 // The parts of an EPUB chapter Qt's rich text can't show: an SVG wrapped
 // around a cover image is the common one.
@@ -164,7 +169,8 @@ Reader::Reader(Library *library, Preferences *preferences, QObject *parent)
             return;
         // Where a page's content is depends on whether running heads count.
         m_pdfContentCache.clear();
-        if (m_format == QLatin1String("epub") && m_keepFonts != m_preferences->fontFamily().isEmpty())
+        if (m_format == QLatin1String("epub") &&
+            (m_keepFonts != m_preferences->fontFamily().isEmpty() || m_hyphenating != m_preferences->hyphenate()))
             loadChapters();
         styleChapters();
         paginate();
@@ -294,11 +300,15 @@ bool Reader::loadEpub(const QString &directory, const QString &digest) {
 void Reader::loadChapters() {
     m_keepFonts = m_preferences->fontFamily().isEmpty();
     m_keepColors = keepColors();
+    m_hyphenating = m_preferences->hyphenate();
     m_chapters.clear();
     m_anchors.clear();
+    m_hyphenDoc.clear();
+    m_hyphenClean.clear();
     m_charactersBefore.clear();
     m_characterCount = 0;
     m_bookImages.clear();
+    const Hyphenator *hyphenator = m_hyphenating ? Hyphenator::forLanguage(m_language) : nullptr;
     for (const auto &path : m_chapterPaths) {
         auto document = std::make_unique<BookDocument>(path, m_root, m_keepFonts, m_keepColors);
         document->documentLayout()->registerHandler(QTextFormat::ImageObject, m_imageHandler);
@@ -336,10 +346,75 @@ void Reader::loadChapters() {
         }
         cursor.endEditBlock();
         m_anchors << anchors;
+        // After the anchors, which are offsets in the text as the book has
+        // it: the hyphens are counted out of every offset from here on.
+        QList<int> hyphens;
+        if (hyphenator)
+            hyphenate(document.get(), &hyphens);
+        QList<int> clean;
+        for (int i = 0; i < hyphens.size(); ++i)
+            clean << hyphens[i] - i;
+        m_hyphenDoc << hyphens;
+        m_hyphenClean << clean;
         m_charactersBefore << m_characterCount;
-        m_characterCount += document->characterCount();
+        m_characterCount += document->characterCount() - hyphens.size();
         m_chapters.push_back(std::move(document));
     }
+}
+
+void Reader::hyphenate(BookDocument *document, QList<int> *positions) const {
+    const Hyphenator *hyphenator = Hyphenator::forLanguage(m_language);
+    if (!hyphenator)
+        return;
+    static const QRegularExpression word("\\p{L}{5,}");
+    QList<int> inserts;
+    for (QTextBlock block = document->begin(); block.isValid(); block = block.next()) {
+        // Code and other fixed-pitch text is set as it is.
+        if (block.charFormat().fontFixedPitch())
+            continue;
+        const QString text = block.text();
+        for (auto it = word.globalMatch(text); it.hasNext();) {
+            const auto match = it.next();
+            for (int at : hyphenator->breaks(match.captured()))
+                inserts << block.position() + match.capturedStart() + at;
+        }
+    }
+    // From the back, so each insertion leaves the positions before it as
+    // they were; the hyphen takes the format of the word it's in.
+    QTextCursor cursor(document);
+    cursor.beginEditBlock();
+    for (int i = inserts.size() - 1; i >= 0; --i) {
+        cursor.setPosition(inserts[i]);
+        cursor.insertText(QString(QChar(QChar::SoftHyphen)), cursor.charFormat());
+    }
+    cursor.endEditBlock();
+    // Where they ended up: each sits after those inserted before it.
+    for (int i = 0; i < inserts.size(); ++i)
+        *positions << inserts[i] + i;
+}
+
+int Reader::docPos(int chapter, int offset) const {
+    if (chapter < 0 || chapter >= m_hyphenClean.size() || m_hyphenClean[chapter].isEmpty())
+        return offset;
+    const auto &clean = m_hyphenClean[chapter];
+    return offset + int(std::upper_bound(clean.begin(), clean.end(), offset) - clean.begin());
+}
+
+int Reader::cleanPos(int chapter, int position) const {
+    if (chapter < 0 || chapter >= m_hyphenDoc.size() || m_hyphenDoc[chapter].isEmpty())
+        return position;
+    const auto &doc = m_hyphenDoc[chapter];
+    return position - int(std::lower_bound(doc.begin(), doc.end(), position) - doc.begin());
+}
+
+int Reader::cleanCount(int chapter) const {
+    if (chapter < 0 || chapter >= int(m_chapters.size()))
+        return 0;
+    return m_chapters[chapter]->characterCount() - (chapter < m_hyphenDoc.size() ? m_hyphenDoc[chapter].size() : 0);
+}
+
+bool Reader::hyphenationAvailable() const {
+    return isOpen() && m_format == QLatin1String("epub") && Hyphenator::forLanguage(m_language) != nullptr;
 }
 
 bool Reader::keepColors() const { return m_preferences->readingTheme() == QLatin1String("original"); }
@@ -497,6 +572,8 @@ void Reader::close() {
     m_chapters.clear();
     m_chapterPaths.clear();
     m_anchors.clear();
+    m_hyphenDoc.clear();
+    m_hyphenClean.clear();
     m_toc.clear();
     m_pageStart.clear();
     m_imageSizes.clear();
@@ -607,11 +684,12 @@ int Reader::pageOf(int chapter, int offset) const {
     if (chapter < 0 || chapter >= int(m_chapters.size()) || m_pageStart.size() < 2)
         return 0;
     const auto *document = m_chapters[chapter].get();
-    const QTextBlock block = document->findBlock(offset);
+    const int position = docPos(chapter, offset);
+    const QTextBlock block = document->findBlock(position);
     int local = 0;
     if (block.isValid()) {
         const QRectF rect = document->documentLayout()->blockBoundingRect(block);
-        const QTextLine line = block.layout()->lineForTextPosition(offset - block.position());
+        const QTextLine line = block.layout()->lineForTextPosition(position - block.position());
         const double y = rect.top() + (line.isValid() ? line.y() : 0);
         local = int(std::floor((y + 0.5) / m_pageSize.height()));
     }
@@ -635,10 +713,10 @@ int Reader::firstPositionOnPage(int page) const {
         for (int i = 0; i < layout->lineCount(); ++i) {
             const QTextLine line = layout->lineAt(i);
             if (rect.top() + line.y() >= top - 0.5)
-                return block.position() + line.textStart();
+                return cleanPos(chapter, block.position() + line.textStart());
         }
     }
-    return qMax(0, document->characterCount() - 1);
+    return qMax(0, cleanCount(chapter) - 1);
 }
 
 void Reader::setPage(int page, bool keepPlace) {
@@ -1123,8 +1201,8 @@ void Reader::paintEpub(QPainter *painter, int column) {
 
     auto selection = [&](int start, int end, const QTextCharFormat &format) {
         QTextCursor cursor(document);
-        cursor.setPosition(qMin(start, document->characterCount() - 1));
-        cursor.setPosition(qMin(end, document->characterCount() - 1), QTextCursor::KeepAnchor);
+        cursor.setPosition(qMin(docPos(chapter, start), document->characterCount() - 1));
+        cursor.setPosition(qMin(docPos(chapter, end), document->characterCount() - 1), QTextCursor::KeepAnchor);
         context.selections << QAbstractTextDocumentLayout::Selection{cursor, format};
     };
     for (const auto &value : m_highlights) {
@@ -1323,7 +1401,7 @@ int Reader::positionAt(int column, const QPointF &point) const {
     const QRectF rect = columnRect(column);
     const QPointF local(qBound(0.0, point.x() - rect.x(), rect.width()),
                         qBound(0.0, point.y() - rect.y(), rect.height() - 1) + top);
-    return m_chapters[chapter]->documentLayout()->hitTest(local, Qt::FuzzyHit);
+    return cleanPos(chapter, m_chapters[chapter]->documentLayout()->hitTest(local, Qt::FuzzyHit));
 }
 
 int Reader::dragPosition(int anchorColumn, const QPointF &point) const {
@@ -1336,7 +1414,7 @@ int Reader::dragPosition(int anchorColumn, const QPointF &point) const {
         return positionAt(column, point);
     // The other page starts a new chapter, where positions count from its
     // own start: stop at the edge of this one.
-    return column > anchorColumn ? m_chapters[chapter]->characterCount() - 1 : 0;
+    return column > anchorColumn ? cleanCount(chapter) - 1 : 0;
 }
 
 QString Reader::linkAt(int column, const QPointF &point) const {
@@ -1381,14 +1459,15 @@ void Reader::select(int column, int anchor, int position) {
     if (!m_pdf) {
         // Whole words, as Kindle selects: nobody means to highlight half of one.
         QTextCursor cursor(m_chapters[m_selectionChapter].get());
-        cursor.setPosition(m_selectionStart);
-        if (!cursor.atBlockStart() && cursor.document()->characterAt(m_selectionStart - 1).isLetterOrNumber())
+        const int start = docPos(m_selectionChapter, m_selectionStart), end = docPos(m_selectionChapter, m_selectionEnd);
+        cursor.setPosition(start);
+        if (!cursor.atBlockStart() && isWordChar(cursor.document()->characterAt(start - 1)))
             cursor.movePosition(QTextCursor::StartOfWord);
-        m_selectionStart = cursor.position();
-        cursor.setPosition(m_selectionEnd);
-        if (cursor.document()->characterAt(m_selectionEnd).isLetterOrNumber() && m_selectionEnd > m_selectionStart)
+        m_selectionStart = cleanPos(m_selectionChapter, cursor.position());
+        cursor.setPosition(end);
+        if (isWordChar(cursor.document()->characterAt(end)) && end > start)
             cursor.movePosition(QTextCursor::EndOfWord);
-        m_selectionEnd = cursor.position();
+        m_selectionEnd = cleanPos(m_selectionChapter, cursor.position());
     }
     m_selectedHighlight.clear();
     emit selectionChanged();
@@ -1405,13 +1484,13 @@ void Reader::selectWord(int column, const QPointF &point) {
     }
     const int chapter = chapterOfPage(m_page + column);
     QTextCursor cursor(m_chapters[chapter].get());
-    cursor.setPosition(position);
+    cursor.setPosition(docPos(chapter, position));
     cursor.select(QTextCursor::WordUnderCursor);
     if (!cursor.hasSelection())
         return;
     m_selectionChapter = chapter;
-    m_selectionStart = cursor.selectionStart();
-    m_selectionEnd = cursor.selectionEnd();
+    m_selectionStart = cleanPos(chapter, cursor.selectionStart());
+    m_selectionEnd = cleanPos(chapter, cursor.selectionEnd());
     m_selectedHighlight.clear();
     emit selectionChanged();
     emit repaint();
@@ -1454,7 +1533,8 @@ QRectF Reader::selectionBounds() const {
         return bounds;
     }
     const auto *document = m_chapters[m_selectionChapter].get();
-    auto pointOf = [&](int position, bool bottom) {
+    auto pointOf = [&](int offset, bool bottom) {
+        const int position = docPos(m_selectionChapter, offset);
         const QTextBlock block = document->findBlock(position);
         const QRectF rect = document->documentLayout()->blockBoundingRect(block);
         const QTextLine line = block.layout()->lineForTextPosition(position - block.position());
@@ -1462,7 +1542,7 @@ QRectF Reader::selectionBounds() const {
             return QPointF();
         const double x = rect.left() + line.cursorToX(position - block.position());
         const double y = rect.top() + line.y() + (bottom ? line.height() : 0);
-        const int page = pageOf(m_selectionChapter, position);
+        const int page = pageOf(m_selectionChapter, offset);
         const int column = qBound(0, page - m_page, m_columns - 1);
         return QPointF(x, y - (page - m_pageStart[m_selectionChapter]) * m_pageSize.height()) + columnRect(column).topLeft();
     };
@@ -1482,8 +1562,8 @@ QString Reader::textOf(int chapter, int start, int end) const {
     if (chapter < 0 || chapter >= int(m_chapters.size()))
         return {};
     QTextCursor cursor(m_chapters[chapter].get());
-    cursor.setPosition(qMin(start, m_chapters[chapter]->characterCount() - 1));
-    cursor.setPosition(qMin(end, m_chapters[chapter]->characterCount() - 1), QTextCursor::KeepAnchor);
+    cursor.setPosition(qMin(docPos(chapter, start), m_chapters[chapter]->characterCount() - 1));
+    cursor.setPosition(qMin(docPos(chapter, end), m_chapters[chapter]->characterCount() - 1), QTextCursor::KeepAnchor);
     return plain(cursor.selectedText());
 }
 
@@ -1507,9 +1587,9 @@ QString Reader::selectionContext() const {
         text = textOf(m_selectionChapter, m_selectionStart - 25, m_selectionEnd + 25);
         start = text.indexOf(selectionText());
     } else {
-        const QTextBlock block = m_chapters[m_selectionChapter]->findBlock(m_selectionStart);
-        text = block.text();
-        start = m_selectionStart - block.position();
+        const QTextBlock block = m_chapters[m_selectionChapter]->findBlock(docPos(m_selectionChapter, m_selectionStart));
+        text = block.text().remove(QChar(QChar::SoftHyphen));
+        start = m_selectionStart - cleanPos(m_selectionChapter, block.position());
     }
     if (start < 0)
         return text.left(200);
@@ -1938,16 +2018,23 @@ void Reader::search(const QString &query) {
                 }
             }
         } else {
+            // A word may carry soft hyphens, which the search looks through.
+            QStringList pieces;
+            for (const QChar &c : needle)
+                pieces << QRegularExpression::escape(QString(c));
+            const QRegularExpression pattern(pieces.join("\\x{00AD}?"), QRegularExpression::CaseInsensitiveOption);
             for (int chapter = 0; chapter < int(m_chapters.size()) && m_searchResults.size() < limit; ++chapter) {
                 auto *document = m_chapters[chapter].get();
-                for (QTextCursor found = document->find(needle); !found.isNull() && m_searchResults.size() < limit;
-                     found = document->find(needle, found)) {
+                for (QTextCursor found = document->find(pattern); !found.isNull() && m_searchResults.size() < limit;
+                     found = document->find(pattern, found)) {
                     const QTextBlock block = found.block();
-                    auto result = snippet(block.text(), found.selectionStart() - block.position(), needle.size());
+                    const int start = cleanPos(chapter, found.selectionStart()), end = cleanPos(chapter, found.selectionEnd());
+                    auto result = snippet(block.text().remove(QChar(QChar::SoftHyphen)),
+                                          start - cleanPos(chapter, block.position()), end - start);
                     result["chapter"] = chapter;
-                    result["start"] = found.selectionStart();
-                    result["end"] = found.selectionEnd();
-                    result["page"] = pageOf(chapter, found.selectionStart()) + 1;
+                    result["start"] = start;
+                    result["end"] = end;
+                    result["page"] = pageOf(chapter, start) + 1;
                     m_searchResults << result;
                 }
             }

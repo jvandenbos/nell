@@ -246,6 +246,18 @@ Popup {
                 checked: prefs.justify
                 onToggled: prefs.justify = checked
             }
+            Switch {
+                visible: !panel.pdf
+                Layout.fillWidth: true
+                text: qsTr("Hyphenate")
+                checked: prefs.hyphenate
+                enabled: reader.hyphenationAvailable
+                onToggled: prefs.hyphenate = checked
+                ToolTip.visible: hovered
+                ToolTip.delay: 600
+                ToolTip.text: reader.hyphenationAvailable ? qsTr("Break words at the ends of lines, as a printed book does")
+                                                          : qsTr("No hyphenation patterns for this book’s language")
+            }
             // Auto lets detection decide per book; On and Off are the reader's
             // explicit choice and survive detection agreeing with them.
             Label {
