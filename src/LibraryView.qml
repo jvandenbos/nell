@@ -54,8 +54,6 @@ Item {
     Shortcut { context: Qt.ApplicationShortcut; sequence: "Space"; enabled: view.visible && grid.activeFocus; onActivated: view.openCurrent() }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "/"; enabled: view.visible && !win.textEntry; onActivated: search.forceActiveFocus() }
     Shortcut { context: Qt.ApplicationShortcut; sequence: StandardKey.Find; enabled: view.visible; onActivated: search.forceActiveFocus() }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "S"; enabled: view.visible && !win.textEntry && !win.helpVisible; onActivated: statsPanel.show(grid) }
-    Shortcut { context: Qt.ApplicationShortcut; sequence: "C"; enabled: view.visible && !win.textEntry && !win.helpVisible; onActivated: win.openCatalogs() }
     Shortcut {
         context: Qt.ApplicationShortcut
         sequences: [StandardKey.Delete, "Backspace"]
@@ -129,7 +127,9 @@ Item {
                     currentIndex: Math.max(0, ["recent", "title", "author"].indexOf(prefs.librarySort))
                     onActivated: prefs.librarySort = currentValue
                 }
+                // With the sidebar beside the shelf these live there instead.
                 RowLayout {
+                    visible: !win.wide
                     Layout.row: 0
                     Layout.column: view.narrow ? 1 : 3
                     Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
@@ -143,7 +143,7 @@ Item {
                         iconName: "stats"
                         iconColor: record.stats.today.goalMet ? Tokens.accentText : Tokens.text
                         tip: record.stats.streak > 0 ? qsTr("Reading: %n-day streak (S)", "", record.stats.streak) : qsTr("Reading goal and streak (S)")
-                        onClicked: statsPanel.show(grid)
+                        onClicked: win.showStats(grid)
                     }
                     AccentButton {
                         text: qsTr("Add Books")
@@ -153,6 +153,7 @@ Item {
             }
 
             Segmented {
+                visible: !win.wide
                 // Its options fill, which would otherwise make it fill too.
                 Layout.fillWidth: view.narrow
                 Layout.preferredWidth: view.narrow ? view.contentWidth : 312
@@ -200,6 +201,13 @@ Item {
 
         Keys.onReturnPressed: view.openCurrent()
         Keys.onEnterPressed: view.openCurrent()
+        // Left off the first column lands on the sidebar, when there is one.
+        Keys.onLeftPressed: event => {
+            if (sidebar.visible && (currentIndex < 0 || currentIndex % view.shelfColumns === 0))
+                sidebar.focusRows()
+            else
+                event.accepted = false
+        }
 
         header: Item {
             width: grid.width
@@ -411,8 +419,6 @@ Item {
         }
         MenuItem { text: qsTr("Remove from Library…"); onTriggered: removeDialog.ask(contextMenu.book) }
     }
-
-    StatsPanel { id: statsPanel }
 
     Dialog {
         id: removeDialog

@@ -53,6 +53,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- A sidebar beside the library and the catalogs, from 900 px of window width:
+  All Books, Reading, Finished, every saved catalog by name, the reading
+  record, Add Books, and the shortcuts. Left off the shelf's first column or
+  Tab reaches it; Enter goes; Right or Esc comes back. Narrower
+  windows keep the header's buttons and the All / Reading / Finished control.
+  `S` and `C` now work from the catalogs too.
+
 - Exported notes are a reading record: the Markdown has each highlight's
   color, the bookmarks, and the Words list with definitions, placed by PDF
   page or EPUB location instead of page numbers that depend on the window.

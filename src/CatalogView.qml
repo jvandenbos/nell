@@ -152,6 +152,7 @@ Item {
             highlighted: ListView.isCurrentItem
             Material.roundedScale: theme.radius
             onClicked: catalog.open(index)
+            Keys.onLeftPressed: event => { if (sidebar.visible) sidebar.focusRows(); else event.accepted = false }
             Accessible.name: modelData.name + ", " + modelData.url
             background: Rectangle {
                 radius: theme.radius
@@ -213,6 +214,7 @@ Item {
             Keys.onReturnPressed: act()
             Keys.onEnterPressed: act()
             Keys.onSpacePressed: act()
+            Keys.onLeftPressed: event => { if (sidebar.visible) sidebar.focusRows(); else event.accepted = false }
             width: entries.width
             height: book ? Math.max(104, body.implicitHeight + 24) : 52
             highlighted: ListView.isCurrentItem

@@ -34,15 +34,45 @@ ApplicationWindow {
     property string locateId: ""
     // The catalogs are a view of their own in the library's place.
     property bool catalogOpen: false
+    // Room for the sidebar beside the shelf; below this the library's
+    // header carries its choices instead.
+    readonly property bool wide: width >= 900
+    // Where we are, as the sidebar names its rows.
+    readonly property string place: reading ? ""
+                                    : catalogOpen ? (catalog.current >= 0 ? "catalog:" + catalog.current : "catalogs")
+                                    : "library:" + libraryView.status
 
+    function showLibrary(status) {
+        if (catalogOpen) {
+            catalog.leave()
+            catalogOpen = false
+        }
+        libraryView.status = status
+        libraryView.focusGrid()
+    }
+    // The list of catalogs, to add to, take from, or pick from.
     function openCatalogs() {
+        catalog.leave()
         catalogOpen = true
+        catalogView.focusList()
+    }
+    // Straight into one catalog's feed.
+    function openCatalog(index) {
+        catalogOpen = true
+        catalog.open(index)
         catalogView.focusList()
     }
     function closeCatalogs() {
         catalog.leave()
         catalogOpen = false
         libraryView.focusGrid()
+    }
+    function showStats(from) { statsPanel.show(from) }
+    function focusContent() {
+        if (catalogOpen)
+            catalogView.focusList()
+        else
+            libraryView.focusGrid()
     }
 
     function openBook(id) {
@@ -115,6 +145,9 @@ ApplicationWindow {
     Shortcut { sequences: [StandardKey.Open, "Ctrl+O"]; context: Qt.ApplicationShortcut; onActivated: win.pickBooks() }
     Shortcut { sequence: "F11"; context: Qt.ApplicationShortcut; onActivated: win.toggleFullScreen() }
     Shortcut { sequence: "F"; context: Qt.ApplicationShortcut; enabled: win.surfaceFocused; onActivated: win.toggleFullScreen() }
+    // Around the library and the catalogs, wherever the keyboard is there.
+    Shortcut { sequence: "S"; context: Qt.ApplicationShortcut; enabled: !win.reading && !win.textEntry && !win.helpVisible; onActivated: win.showStats(win.activeFocusItem) }
+    Shortcut { sequence: "C"; context: Qt.ApplicationShortcut; enabled: !win.reading && !win.textEntry && !win.helpVisible; onActivated: win.openCatalogs() }
 
     function toggleFullScreen() {
         visibility = visibility === Window.FullScreen ? Window.Windowed : Window.FullScreen
@@ -151,22 +184,49 @@ ApplicationWindow {
         LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
         LayoutMirroring.childrenInherit: true
 
-        LibraryView {
-            id: libraryView
-            anchors.fill: parent
-            visible: !win.reading && !win.catalogOpen
+        Sidebar {
+            id: sidebar
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: implicitWidth
+            visible: !win.reading && win.wide
             enabled: visible
-            onOpenRequested: id => win.openBook(id)
-            onLocateRequested: id => win.locate(id)
+            current: win.place
+            onLibraryPicked: status => win.showLibrary(status)
+            onCatalogsPicked: win.openCatalogs()
+            onCatalogPicked: index => win.openCatalog(index)
+            onRecordPicked: from => win.showStats(from)
+            onAddBooksPicked: win.pickBooks()
+            onHelpPicked: from => help.show(from)
+            onEscaped: win.focusContent()
         }
 
-        CatalogView {
-            id: catalogView
-            anchors.fill: parent
-            visible: !win.reading && win.catalogOpen
-            enabled: visible
-            onCloseRequested: win.closeCatalogs()
-            onOpenRequested: id => win.openBook(id)
+        // The library or the catalogs, beside the sidebar when it's there.
+        Item {
+            id: content
+            anchors.left: sidebar.visible ? sidebar.right : parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+
+            LibraryView {
+                id: libraryView
+                anchors.fill: parent
+                visible: !win.reading && !win.catalogOpen
+                enabled: visible
+                onOpenRequested: id => win.openBook(id)
+                onLocateRequested: id => win.locate(id)
+            }
+
+            CatalogView {
+                id: catalogView
+                anchors.fill: parent
+                visible: !win.reading && win.catalogOpen
+                enabled: visible
+                onCloseRequested: win.closeCatalogs()
+                onOpenRequested: id => win.openBook(id)
+            }
         }
 
         Loader {
@@ -227,6 +287,7 @@ ApplicationWindow {
         function onBadgeEarned(name) { toast.show(qsTr("Badge earned: %1").arg(name)) }
     }
 
+    StatsPanel { id: statsPanel }
     HelpOverlay { id: help; reading: win.reading }
     Toast { id: toast }
 }

@@ -10,7 +10,11 @@ looked up, and your highlights and notes exportable as Markdown.
 
 ![The library, with Continue Reading above all books](docs/library.png)
 
-- **Library.** Add books with the file chooser, by dropping them on the window,
+- **Library.** A sidebar, once the window is 900 px wide, names the places:
+  All Books, Reading, Finished, each catalog, and the reading record; narrower
+  than that the same things sit in the library's header. Left off the shelf's
+  first column reaches it; Right or Esc comes back. Add books with the
+  file chooser, by dropping them on the window,
   or by opening one from a file manager. Books stay where they are and are never
   modified; a book's identity is its contents, so a moved file keeps its notes.
 - **Reading.** Pages are paginated to the window, two side by side when there's

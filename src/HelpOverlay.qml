@@ -69,6 +69,7 @@ Popup {
         ["/  Ctrl+F", qsTr("Find in the library")],
         ["S", qsTr("Reading goal, streak, and badges")],
         ["C", qsTr("Catalogs: get books from Calibre and other OPDS servers")],
+        ["←  Tab", qsTr("Reach the sidebar; Enter goes where the row says, → comes back")],
         ["Delete", qsTr("Remove the selected book from the library")]
     ]
     readonly property var commonKeys: [

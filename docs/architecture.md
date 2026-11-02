@@ -47,7 +47,7 @@ way is finished by the next one; problems go to stderr.
 | `portalfilepicker.{h,cpp}`, `filepicker.h` | The native file chooser through the desktop portal. |
 | `cli.{h,cpp}` | The headless commands, each with a `--json` form. |
 | `skill.md` | The agent skill `nell skill install` writes out. |
-| `*.qml` | The interface: `Main.qml` switches between `LibraryView`, `CatalogView` and `ReaderView`; the panels (contents, search, appearance, notes, the Reading panel, the footnote card, the lightbox) are separate files. |
+| `*.qml` | The interface: `Main.qml` switches between `LibraryView`, `CatalogView` and `ReaderView`, with `Sidebar` beside the first two in a wide window; the panels (contents, search, appearance, notes, the Reading panel, the footnote card, the lightbox) are separate files. |
 
 ## Places in a book
 
