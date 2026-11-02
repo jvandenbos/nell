@@ -3,6 +3,7 @@
 #include "theme.h"
 
 #include <QColor>
+#include <QUrl>
 #include <QDir>
 #include <QFontDatabase>
 #include <QStandardPaths>
@@ -64,6 +65,9 @@ Preferences::Preferences(Theme *theme, const QString &file, QObject *parent)
     m_reduceMotion = m_settings.value("ui/reduceMotion", false).toBool();
     m_ruler = m_settings.value("reading/ruler", false).toBool();
     m_dailyGoal = qBound(5, m_settings.value("reading/dailyGoalMinutes", 30).toInt(), 600);
+    m_downloadDirectory = m_settings.value("library/downloads").toString();
+    if (m_downloadDirectory.isEmpty())
+        m_downloadDirectory = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/Books";
 
     const QStringList installed = QFontDatabase::families();
     for (const char *family : {"Literata", "Charter", "Georgia", "EB Garamond", "Crimson Pro", "Noto Serif", "C059",
@@ -249,6 +253,15 @@ void Preferences::setDailyGoal(int minutes) {
     m_dailyGoal = minutes;
     store("reading/dailyGoalMinutes", minutes);
     emit goalChanged();
+}
+
+void Preferences::setDownloadDirectory(const QString &directory) {
+    const QString path = QUrl(directory).isLocalFile() ? QUrl(directory).toLocalFile() : directory;
+    if (path.isEmpty() || path == m_downloadDirectory)
+        return;
+    m_downloadDirectory = path;
+    store("library/downloads", path);
+    emit downloadDirectoryChanged();
 }
 
 void Preferences::setReduceMotion(bool reduce) {

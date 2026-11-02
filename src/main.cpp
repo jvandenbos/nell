@@ -18,6 +18,7 @@
 #include "preferences.h"
 #include "reader.h"
 #include "record.h"
+#include "catalog.h"
 #include "theme.h"
 #include "translator.h"
 
@@ -86,6 +87,7 @@ int main(int argc, char *argv[]) {
     Reader reader(&library, &preferences);
     ReadingRecord record(&library, &preferences);
     reader.setRecord(&record);
+    BookCatalog catalog(&library, &preferences);
     Dictionary dictionary;
     PortalFilePicker picker;
 
@@ -97,6 +99,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("library", &library);
     engine.rootContext()->setContextProperty("reader", &reader);
     engine.rootContext()->setContextProperty("record", &record);
+    engine.rootContext()->setContextProperty("catalog", &catalog);
     engine.rootContext()->setContextProperty("dictionary", &dictionary);
     engine.rootContext()->setContextProperty("picker", &picker);
     engine.load(QUrl("qrc:/Main.qml"));

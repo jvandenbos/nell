@@ -11,6 +11,7 @@ VERSION = 0.3.0
 DEFINES += NELL_VERSION=\\\"$$VERSION\\\"
 
 HEADERS += \
+    src/catalog.h \
     src/cli.h \
     src/dictionary.h \
     src/epub.h \
@@ -27,6 +28,7 @@ HEADERS += \
 
 SOURCES += \
     src/main.cpp \
+    src/catalog.cpp \
     src/cli.cpp \
     src/dictionary.cpp \
     src/epub.cpp \

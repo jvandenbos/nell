@@ -10,6 +10,7 @@
 #include <QtTest>
 #include <poppler-qt6.h>
 
+#include "catalog.h"
 #include "dictionary.h"
 #include "epub.h"
 #include "hyphenator.h"
@@ -425,6 +426,128 @@ private slots:
         QVERIFY2(run.out.startsWith("Today"), run.out.constData());
         auto json = runNell(dir.path(), {"stats", "--json"});
         QVERIFY(QJsonDocument::fromJson(json.out).object().contains("badges"));
+    }
+
+    void catalogsAreBrowsedAndBooksGot()
+    {
+        QTemporaryDir dir;
+        const QString feeds = dir.path() + "/feeds";
+        QDir().mkpath(feeds);
+        auto fileUrl = [&](const QString &name) { return QUrl::fromLocalFile(feeds + "/" + name); };
+        auto write = [&](const QString &name, const QByteArray &data) {
+            QFile file(feeds + "/" + name);
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write(data);
+        };
+        const QString book = makeEpub(dir.path(), "Found in a Catalog");
+        QFile::copy(book, feeds + "/found.epub");
+        QFile::copy(book, feeds + "/thumb.jpg");  // Any bytes will do for the cache.
+        write("root.xml",
+              "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+              "<feed xmlns=\"http://www.w3.org/2005/Atom\" xmlns:opds=\"http://opds-spec.org/2010/catalog\">\n"
+              "  <title>Calibre Library</title>\n"
+              "  <link rel=\"search\" type=\"application/opensearchdescription+xml\" href=\"osd.xml\"/>\n"
+              "  <entry><title>By Newest</title><content type=\"text\">Books sorted by date</content>\n"
+              "    <link rel=\"subsection\" type=\"application/atom+xml;profile=opds-catalog;kind=acquisition\" href=\"books.xml\"/></entry>\n"
+              "  <entry><title>Nothing here</title></entry>\n"
+              "</feed>");
+        write("books.xml",
+              "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+              "<feed xmlns=\"http://www.w3.org/2005/Atom\">\n"
+              "  <title>By Newest</title>\n"
+              "  <link rel=\"next\" type=\"application/atom+xml\" href=\"books2.xml\"/>\n"
+              "  <entry><title>Found in a Catalog</title><author><name>A. Writer</name></author>\n"
+              "    <summary type=\"html\">&lt;p&gt;A &lt;b&gt;fine&lt;/b&gt; book.&lt;/p&gt;</summary>\n"
+              "    <link rel=\"http://opds-spec.org/image/thumbnail\" type=\"image/jpeg\" href=\"thumb.jpg\"/>\n"
+              "    <link rel=\"http://opds-spec.org/acquisition\" type=\"application/pdf\" href=\"found.pdf\"/>\n"
+              "    <link rel=\"http://opds-spec.org/acquisition\" type=\"application/epub+zip\" href=\"found.epub\"/></entry>\n"
+              "  <entry><title>Paper Only</title><link rel=\"http://opds-spec.org/acquisition\" type=\"application/pdf\" href=\"paper.pdf\"/></entry>\n"
+              "</feed>");
+        write("books2.xml",
+              "<feed xmlns=\"http://www.w3.org/2005/Atom\"><title>By Newest</title>\n"
+              "  <entry><title>Third</title><link rel=\"http://opds-spec.org/acquisition\" type=\"application/epub+zip\" href=\"third.epub\"/></entry></feed>");
+        write("osd.xml",
+              "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+              "<OpenSearchDescription xmlns=\"http://a9.com/-/spec/opensearch/1.1/\"><ShortName>Calibre</ShortName>\n"
+              "  <Url type=\"application/atom+xml\" template=\"search.xml?q={searchTerms}\"/></OpenSearchDescription>");
+        write("search.xml",
+              "<feed xmlns=\"http://www.w3.org/2005/Atom\"><title>Search results</title></feed>");
+
+        // The parser alone.
+        QString title;
+        QUrl next, searchUrl;
+        QString searchTemplate;
+        QFile booksFile(feeds + "/books.xml");
+        QVERIFY(booksFile.open(QIODevice::ReadOnly));
+        const QVariantList parsed = BookCatalog::parse(booksFile.readAll(), fileUrl("books.xml"), &title, &next, &searchUrl, &searchTemplate);
+        QCOMPARE(title, QString("By Newest"));
+        QCOMPARE(next, fileUrl("books2.xml"));
+        QCOMPARE(parsed.size(), 2);
+        const auto first = parsed[0].toMap();
+        QCOMPARE(first["kind"].toString(), QString("book"));
+        QCOMPARE(first["author"].toString(), QString("A. Writer"));
+        QCOMPARE(first["summary"].toString(), QString("A fine book."));
+        QCOMPARE(first["epub"].toString(), fileUrl("found.epub").toString());
+        QCOMPARE(first["pdf"].toString(), fileUrl("found.pdf").toString());
+        QCOMPARE(first["thumbnail"].toString(), fileUrl("thumb.jpg").toString());
+        QCOMPARE(parsed[1].toMap()["epub"].toString(), QString());
+
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        preferences.setDownloadDirectory(dir.path() + "/downloads");
+        BookCatalog catalog(&library, &preferences, dir.path() + "/data", dir.path() + "/cache");
+        QSignalSpy feed(&catalog, &BookCatalog::feedChanged);
+        QVERIFY(!catalog.add("", "not a url", "", ""));
+        QVERIFY(catalog.add("Shelf", fileUrl("root.xml").toString(), "me", "secret"));
+        QCOMPARE(catalog.catalogs().size(), 1);
+        QCOMPARE(QFileInfo(dir.path() + "/data/catalogs.json").permissions() & (QFile::ReadGroup | QFile::ReadOther), QFileDevice::Permissions());
+        QTRY_VERIFY(feed.count() >= 1);
+        QCOMPARE(catalog.title(), QString("Calibre Library"));
+        QCOMPARE(catalog.entries().size(), 1);  // The entry with nothing to offer is left out.
+        QCOMPARE(catalog.entries()[0].toMap()["kind"].toString(), QString("nav"));
+        QTRY_VERIFY(catalog.searchable());
+        QVERIFY(!catalog.canGoBack());
+
+        catalog.browse(QUrl(catalog.entries()[0].toMap()["url"].toString()));
+        QTRY_COMPARE(catalog.entries().size(), 2);
+        QVERIFY(catalog.hasMore());
+        QVERIFY(catalog.canGoBack());
+        catalog.more();
+        QTRY_COMPARE(catalog.entries().size(), 3);
+        QVERIFY(!catalog.hasMore());
+
+        // A thumbnail is fetched once into the cache.
+        QSignalSpy covers(&catalog, &BookCatalog::coverReady);
+        QCOMPARE(catalog.cover(fileUrl("thumb.jpg").toString()), QString());
+        QTRY_COMPARE(covers.count(), 1);
+        const QString cached = covers[0][1].toString();
+        QVERIFY(QFile::exists(cached));
+        QCOMPARE(catalog.cover(fileUrl("thumb.jpg").toString()), cached);
+
+        // Getting a book downloads it and adds it to the library.
+        QSignalSpy downloaded(&catalog, &BookCatalog::downloaded);
+        catalog.get(0);
+        QTRY_COMPARE(downloaded.count(), 1);
+        QVERIFY(QFile::exists(dir.path() + "/downloads/Found in a Catalog - A. Writer.epub"));
+        QCOMPARE(library.books().size(), 1);
+        QCOMPARE(library.book(downloaded[0][0].toString())["title"].toString(), QString("Found in a Catalog"));
+
+        catalog.search("fine");
+        QTRY_COMPARE(catalog.title(), QString("Search results"));
+        catalog.back();
+        QTRY_COMPARE(catalog.title(), QString("By Newest"));
+        catalog.back();
+        QTRY_COMPARE(catalog.title(), QString("Calibre Library"));
+
+        // A feed that isn't there says so and stays where it was.
+        QSignalSpy errors(&catalog, &BookCatalog::errorChanged);
+        catalog.browse(fileUrl("missing.xml"));
+        QTRY_VERIFY(!catalog.error().isEmpty());
+        QCOMPARE(catalog.title(), QString("Calibre Library"));
+
+        catalog.remove(0);
+        QCOMPARE(catalog.catalogs().size(), 0);
+        QCOMPARE(catalog.entries().size(), 0);
     }
 
     void linesOfTextAreListedForTheRuler()
