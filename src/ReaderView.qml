@@ -197,6 +197,61 @@ Item {
         noteEditor.edit(id, existing.length === 0)
     }
 
+    // ---- Reading ruler ----------------------------------------------------
+    // A band across the line being read; the rest of the page is dimmed.
+    // The pointer picks the line it's over; Down and Up step through them.
+    property int rulerIndex: 0
+    readonly property var lines: reader.lines
+    readonly property var rulerLine: prefs.ruler && lines.length ? lines[Math.max(0, Math.min(lines.length - 1, rulerIndex))] : null
+    onLinesChanged: rulerIndex = Math.max(0, Math.min(lines.length - 1, rulerIndex))
+
+    function stepLine(direction) {
+        if (!prefs.ruler || !lines.length) {
+            direction > 0 ? reader.next() : reader.previous()
+            return
+        }
+        const next = rulerIndex + direction
+        if (next >= lines.length) {
+            if (!reader.atEnd) {
+                reader.next()
+                rulerIndex = 0
+            }
+        } else if (next < 0) {
+            if (reader.page > 0 || reader.slice > 0) {
+                reader.previous()
+                rulerIndex = Math.max(0, reader.lines.length - 1)
+            }
+        } else {
+            rulerIndex = next
+        }
+    }
+
+    function lineAt(y) {
+        let best = -1
+        for (let i = 0; i < lines.length; ++i)
+            if (y >= lines[i].y && y < lines[i].y + lines[i].height)
+                return i
+            else if (y >= lines[i].y)
+                best = i
+        return best
+    }
+
+    // ---- Page peek --------------------------------------------------------
+    // ` pins the page; ` again comes back. Held down, it comes back on release.
+    property real pinPressed: 0
+    function pinKeyDown() {
+        pinPressed = Date.now()
+        if (reader.pinned)
+            reader.returnToPin()
+        else
+            reader.pin()
+    }
+    function pinKeyUp() {
+        if (reader.pinned && Date.now() - pinPressed > 450)
+            reader.returnToPin()
+        pinPressed = 0
+    }
+
     function defineSelection() {
         if (!reader.hasSelection)
             return
@@ -215,6 +270,7 @@ Item {
                 return
             view.turnDirection = reader.page > view.lastPage ? 1 : -1
             view.lastPage = reader.page
+            view.rulerIndex = view.turnDirection > 0 ? 0 : Math.max(0, reader.lines.length - 1)
             if (!Tokens.reduceMotion)
                 turn.restart()
         }
@@ -235,8 +291,13 @@ Item {
     }
 
     // ---- Keys -----------------------------------------------------------
-    Shortcut { context: Qt.ApplicationShortcut; sequences: ["Right", "PgDown", "Space", "J", "Down"]; enabled: view.pageKeys; onActivated: reader.next() }
-    Shortcut { context: Qt.ApplicationShortcut; sequences: ["Left", "PgUp", "Shift+Space", "K", "Up"]; enabled: view.pageKeys; onActivated: reader.previous() }
+    Shortcut { context: Qt.ApplicationShortcut; sequences: ["Right", "PgDown", "Space"]; enabled: view.pageKeys; onActivated: reader.next() }
+    Shortcut { context: Qt.ApplicationShortcut; sequences: ["Left", "PgUp", "Shift+Space"]; enabled: view.pageKeys; onActivated: reader.previous() }
+    // With the ruler up, Down and Up move it a line at a time and turn the
+    // page at its ends; without it they turn pages.
+    Shortcut { context: Qt.ApplicationShortcut; sequences: ["J", "Down"]; enabled: view.pageKeys; onActivated: view.stepLine(1) }
+    Shortcut { context: Qt.ApplicationShortcut; sequences: ["K", "Up"]; enabled: view.pageKeys; onActivated: view.stepLine(-1) }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "R"; enabled: view.pageKeys; onActivated: prefs.ruler = !prefs.ruler }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "]"; enabled: view.pageKeys; onActivated: reader.goToChapterStart(1) }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "["; enabled: view.pageKeys; onActivated: reader.goToChapterStart(-1) }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "Home"; enabled: view.pageKeys; onActivated: reader.goToPage(0) }
@@ -317,6 +378,27 @@ Item {
         // Tab from the page brings the controls up and walks into them.
         Keys.onTabPressed: { view.showChrome(); backButton.forceActiveFocus(Qt.TabFocusReason) }
         Keys.onBacktabPressed: { view.showChrome(); scrubber.forceActiveFocus(Qt.BacktabFocusReason) }
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_QuoteLeft && !event.isAutoRepeat && view.pageKeys) {
+                view.pinKeyDown()
+                event.accepted = true
+            }
+        }
+        Keys.onReleased: event => {
+            if (event.key === Qt.Key_QuoteLeft && !event.isAutoRepeat && view.pinPressed > 0) {
+                view.pinKeyUp()
+                event.accepted = true
+            }
+        }
+        // The ruler follows the pointer to the line under it.
+        HoverHandler {
+            enabled: prefs.ruler
+            onPointChanged: {
+                const at = view.lineAt(point.position.y)
+                if (at >= 0)
+                    view.rulerIndex = at
+            }
+        }
 
         onTapped: (x, y) => {
             pages.forceActiveFocus()
@@ -334,6 +416,64 @@ Item {
         onSelectionFinished: { pages.forceActiveFocus(); selectionMenu.keepSelection = false; selectionMenu.open() }
         onHighlightClicked: { pages.forceActiveFocus(); selectionMenu.keepSelection = false; selectionMenu.open() }
         onExternalLink: url => Qt.openUrlExternally(url)
+        onNoteClicked: (href, x, y) => { footnote.returnFocus = pages; footnote.show(href, pages.x + x, pages.y + y) }
+        onImageClicked: path => { lightbox.returnFocus = pages; lightbox.show(path) }
+    }
+
+    // The ruler: the page dimmed above and below the line being read.
+    Item {
+        visible: view.rulerLine !== null
+        x: pages.x
+        y: pages.y
+        width: pages.width
+        height: pages.height
+        readonly property real bandTop: view.rulerLine ? view.rulerLine.y - 2 : 0
+        readonly property real bandBottom: view.rulerLine ? view.rulerLine.y + view.rulerLine.height + 2 : 0
+        Rectangle { x: 0; y: -24; width: parent.width; height: parent.bandTop + 24; color: view.paper; opacity: 0.55 }
+        Rectangle { x: 0; y: parent.bandBottom; width: parent.width; height: parent.height - parent.bandBottom + 24; color: view.paper; opacity: 0.55 }
+        Rectangle {
+            x: view.rulerLine ? view.rulerLine.x - 6 : 0
+            y: parent.bandTop
+            width: view.rulerLine ? view.rulerLine.width + 12 : 0
+            height: parent.bandBottom - parent.bandTop
+            color: "transparent"
+            radius: 3
+            border.width: 1
+            border.color: Tokens.accent
+            opacity: 0.7
+        }
+    }
+
+    // A pinned page: the way back, until it's taken or the pin is dropped.
+    AbstractButton {
+        id: pinChip
+        visible: reader.pinned
+        anchors.horizontalCenter: parent.horizontalCenter
+        y: view.height - view.bottomMargin - height - 4
+        z: 1
+        implicitHeight: 30
+        implicitWidth: pinLabel.implicitWidth + 24
+        focusPolicy: Qt.NoFocus
+        hoverEnabled: true
+        text: qsTr("Back to page %1").arg(reader.pinPage.toLocaleString(Qt.locale(), 'f', 0))
+        Accessible.role: Accessible.Button
+        Accessible.name: text
+        ToolTip.visible: hovered
+        ToolTip.delay: 600
+        ToolTip.text: qsTr("Return to the pinned page (`)")
+        onClicked: reader.returnToPin()
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
+        background: Rectangle {
+            radius: 15
+            color: pinChip.hovered ? Tokens.hover : Tokens.surfaceRaised
+            border.width: 1
+            border.color: Tokens.border
+        }
+        contentItem: Row {
+            spacing: 6
+            Icon { name: "bookmark"; filled: true; color: Tokens.accentText; size: 14; anchors.verticalCenter: parent.verticalCenter }
+            Label { id: pinLabel; text: pinChip.text; color: Tokens.text; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+        }
     }
 
     ParallelAnimation {
@@ -698,6 +838,20 @@ Item {
         anchors.centerIn: parent
         onOpened: view.panelOpened(noteEditor)
         onClosed: { reader.clearSelection(); view.panelClosed(noteEditor) }
+    }
+
+    FootnotePopup {
+        id: footnote
+        property Item returnFocus: null
+        onOpened: view.panelOpened(footnote)
+        onClosed: view.panelClosed(footnote)
+    }
+
+    Lightbox {
+        id: lightbox
+        property Item returnFocus: null
+        onOpened: view.panelOpened(lightbox)
+        onClosed: view.panelClosed(lightbox)
     }
 
     DefinitionCard {

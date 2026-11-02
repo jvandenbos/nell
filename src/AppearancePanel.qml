@@ -292,6 +292,15 @@ Popup {
             }
             Switch {
                 Layout.fillWidth: true
+                text: qsTr("Reading ruler")
+                checked: prefs.ruler
+                onToggled: prefs.ruler = checked
+                ToolTip.visible: hovered
+                ToolTip.delay: 600
+                ToolTip.text: qsTr("A band on the line you’re reading; ↓ and ↑ move it (R)")
+            }
+            Switch {
+                Layout.fillWidth: true
                 text: qsTr("Reduce motion")
                 checked: prefs.reduceMotion
                 onToggled: prefs.reduceMotion = checked

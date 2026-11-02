@@ -51,6 +51,8 @@ Popup {
         ["A", qsTr("Appearance: theme, font, and size")],
         ["Ctrl++  Ctrl+−", qsTr("Bigger or smaller text")],
         ["P", qsTr("Change what the progress corner shows")],
+        ["R", qsTr("Reading ruler; ↓ and ↑ then move it a line")],
+        ["`", qsTr("Pin this page and press again to come back; hold to peek")],
         ["B", qsTr("Bookmark this page")],
         ["H", qsTr("Highlight the selection in the last color used")],
         ["N", qsTr("Add a note to the selection")],
