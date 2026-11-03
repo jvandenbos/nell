@@ -1,5 +1,5 @@
 pkgname=nell
-pkgver=0.3.0
+pkgver=0.4.0
 pkgrel=1
 pkgdesc='Read EPUB and PDF books, after Apple Books, with the best of Kindle'
 arch=('x86_64' 'aarch64')
