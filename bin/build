@@ -6,6 +6,16 @@ mkdir -p "$ROOT/build"
 cd "$ROOT/build"
 
 qmake6 "$ROOT/nell.pro"
+
+# qmake tracks sources, not defines, so a changed VERSION leaves the objects
+# that compile NELL_VERSION in as they are and an incremental build ships the
+# old number. Touch those sources when the version differs from the last build.
+version=$(sed -n 's/^VERSION = //p' "$ROOT/nell.pro")
+if [ "$(cat .version 2>/dev/null)" != "$version" ]; then
+    grep -l NELL_VERSION "$ROOT"/src/*.cpp | xargs touch
+    printf '%s\n' "$version" > .version
+fi
+
 make -j"$(nproc)"
 
 echo "Built $ROOT/build/nell"
