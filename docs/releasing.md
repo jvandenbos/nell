@@ -55,3 +55,19 @@ PR #1674 on 2026-10-26). It builds from the `vX.Y.Z` tag's tarball and runs
 tags, so a pushed release tag is picked up by their bot without another PR.
 It deliberately omits the local recipe's `conflicts`/`replaces` on `quire`:
 that name belongs to an unrelated AUR package.
+
+Until it merges, the PR waits for a maintainer's `build-approved` label
+(still unlabelled on 2026-11-17, when the branch was merged up to `master`
+and a comment asked for it). Their `release/owners.json` needs a line per
+package, written by `bin/release-owners nell`, which needs Arch's `makepkg`.
+On a machine that isn't Arch, run it in the container their CI uses, from the
+fork's checkout (`~/code/omarchy-pkgs`); the tool drops to `nobody`, so work
+on a copy and take the file back out:
+
+```sh
+docker run --rm -v "$PWD:/src:ro" -v "$OUT:/out" ghcr.io/archlinux/archlinux:base-devel bash -lc '
+  pacman -Syu --noconfirm git jq python python-yaml libarchive
+  cp -a /src /w && chown -R nobody:nobody /w && cd /w
+  bin/release-owners nell && bin/release-owners --check
+  cp release/owners.json /out/'
+```
