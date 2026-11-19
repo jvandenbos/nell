@@ -96,8 +96,12 @@ class Reader : public QObject {
     Q_PROPERTY(bool pinned READ pinned NOTIFY pinChanged)
     Q_PROPERTY(int pinPage READ pinPage NOTIFY pinChanged)
     // The lines of text in view, as bands across their column, for the
-    // reading ruler: {x, y, width, height} in the view's coordinates.
+    // reading ruler: {x, y, width, height} in the view's coordinates, and
+    // the characters each holds, which is how long it takes to read.
     Q_PROPERTY(QVariantList lines READ lines NOTIFY positionChanged)
+    // How long what's in view takes this reader, at the pace learned from
+    // them: what auto page turn waits before it turns.
+    Q_PROPERTY(double viewSeconds READ viewSeconds NOTIFY positionChanged)
 
 public:
     static constexpr int CharactersPerLocation = 150;
@@ -119,7 +123,8 @@ public:
     // together, without margins, and the gap between two columns.
     Q_INVOKABLE void setGeometry(double width, double height, int columns, double gap);
 
-    Q_INVOKABLE void next();
+    // automatic: the timer turned the page, not the reader.
+    Q_INVOKABLE void next(bool automatic = false);
     Q_INVOKABLE void previous();
     Q_INVOKABLE void goToPage(int page);
     // The last page, and in fit text the foot of it.
@@ -144,6 +149,7 @@ public:
     bool pinned() const { return m_pinned; }
     int pinPage() const;
     QVariantList lines() const;
+    double viewSeconds() const;
 
     Q_INVOKABLE void toggleBookmark();
     Q_INVOKABLE void removeBookmark(int index);
@@ -318,7 +324,8 @@ private:
     void paintPdf(QPainter *painter, int column);
     QList<QRectF> pdfRects(int page, int start, int end) const;
     QString textOf(int chapter, int start, int end) const;
-    void trackReading(int fromPage);
+    qint64 charactersInView(int fromPage) const;
+    void trackReading(int fromPage, bool learn = true);
     // Counts the time on the page being left, when the page isn't being read on from.
     void spendTime();
     double unreadOfPage() const;

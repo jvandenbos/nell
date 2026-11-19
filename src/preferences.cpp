@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QFontDatabase>
 #include <QStandardPaths>
+#include <cmath>
 
 namespace {
 struct ReadingTheme {
@@ -55,6 +56,10 @@ Preferences::Preferences(Theme *theme, const QString &file, QObject *parent)
     m_justify = m_settings.value("reading/justify", false).toBool();
     m_hyphenate = m_settings.value("reading/hyphenate", true).toBool();
     m_margins = qBound(0, m_settings.value("reading/margins", 1).toInt(), 2);
+    m_paragraphs = m_settings.value("reading/paragraphs", "book").toString();
+    if (m_paragraphs != QLatin1String("indent") && m_paragraphs != QLatin1String("space"))
+        m_paragraphs = "book";
+    m_autoTurnPace = qBound(0.5, m_settings.value("reading/autoTurnPace", 1.0).toDouble(), 2.0);
     m_spread = m_settings.value("reading/spread", true).toBool();
     m_hideRunningHeads = m_settings.value("reading/hideRunningHeads", true).toBool();
     m_librarySort = m_settings.value("library/sort", "recent").toString();
@@ -175,6 +180,25 @@ void Preferences::setMargins(int margins) {
     emit layoutChanged();
 }
 
+void Preferences::setParagraphs(const QString &style) {
+    if (style == m_paragraphs ||
+        (style != QLatin1String("book") && style != QLatin1String("indent") && style != QLatin1String("space")))
+        return;
+    m_paragraphs = style;
+    store("reading/paragraphs", style);
+    emit layoutChanged();
+}
+
+void Preferences::setAutoTurnPace(double pace) {
+    // Tenths, so ten steps up and ten down land back where they began.
+    pace = qBound(0.5, std::round(pace * 10) / 10, 2.0);
+    if (qFuzzyCompare(pace, m_autoTurnPace))
+        return;
+    m_autoTurnPace = pace;
+    store("reading/autoTurnPace", pace);
+    emit autoTurnPaceChanged();
+}
+
 void Preferences::setSpread(bool spread) {
     if (spread == m_spread)
         return;
@@ -211,6 +235,7 @@ void Preferences::learnReadingSpeed(double charactersPerSecond) {
     // A slow moving average: one skimmed page shouldn't swing the estimate.
     m_readingSpeed = qBound(3.0, m_readingSpeed * 0.85 + charactersPerSecond * 0.15, 200.0);
     store("reading/speed", m_readingSpeed);
+    emit readingSpeedChanged();
 }
 
 void Preferences::store(const QString &key, const QVariant &value) {

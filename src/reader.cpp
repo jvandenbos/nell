@@ -166,6 +166,13 @@ QString prepareHtml(QString html) {
 
 constexpr int OriginalAlignment = QTextFormat::UserProperty;
 constexpr int OriginalWidth = QTextFormat::UserProperty + 1;
+constexpr int OriginalTopMargin = QTextFormat::UserProperty + 2;
+constexpr int OriginalBottomMargin = QTextFormat::UserProperty + 3;
+constexpr int OriginalIndent = QTextFormat::UserProperty + 4;
+// A gap this tall above a paragraph is the publisher's scene break, not
+// paragraph spacing (which Qt sets at 12 px unless the book says), so it
+// stays whatever the paragraph style.
+constexpr double SceneBreakPixels = 20;
 
 // A link's target as linkAt reports it: the file's clean path, then the
 // fragment after a '#'.
@@ -505,16 +512,32 @@ void Reader::styleChapters() {
     font.setHintingPreference(QFont::PreferNoHinting);
     const bool justify = m_preferences->justify();
     const double spacing = m_preferences->lineSpacing() * 100;
+    const QString paragraphs = m_preferences->paragraphs();
+    const double em = m_preferences->fontSize();
     const QSizeF page = m_pageSize.isEmpty() ? QSizeF(600, 800) : m_pageSize;
 
     for (auto &document : m_chapters) {
         document->setDefaultFont(font);
         QTextCursor cursor(document.get());
         cursor.beginEditBlock();
+        // Whether the block before was a paragraph of running text: the
+        // first one after a heading, a picture or a break isn't indented.
+        bool afterBody = false;
+        // Where the chapter's text starts from the left. A book that gives
+        // its body a margin gives it to every block, so being set in is
+        // measured from the least of them, not from zero.
+        double leftEdge = 1e9;
+        for (QTextBlock block = document->begin(); block.isValid(); block = block.next())
+            if (!block.text().trimmed().isEmpty())
+                leftEdge = qMin(leftEdge, block.blockFormat().leftMargin());
         for (QTextBlock block = document->begin(); block.isValid(); block = block.next()) {
             QTextBlockFormat format = block.blockFormat();
-            if (!format.hasProperty(OriginalAlignment))
+            if (!format.hasProperty(OriginalAlignment)) {
                 format.setProperty(OriginalAlignment, int(format.alignment()));
+                format.setProperty(OriginalTopMargin, format.topMargin());
+                format.setProperty(OriginalBottomMargin, format.bottomMargin());
+                format.setProperty(OriginalIndent, format.textIndent());
+            }
             const auto original = Qt::Alignment(format.intProperty(OriginalAlignment));
             const bool flowing = !(original & (Qt::AlignHCenter | Qt::AlignRight));
             // Whitespace beside the picture (Gutenberg's cover wrapper has
@@ -530,6 +553,26 @@ void Reader::styleChapters() {
                 format.setLineHeight(100, QTextBlockFormat::SingleHeight);
             else
                 format.setLineHeight(spacing, QTextBlockFormat::ProportionalHeight);
+
+            // Paragraph style applies to running text only: headings,
+            // lists, tables, verse and quotations set in from the margin,
+            // and anything centered keep the publisher's spacing.
+            const double top = format.doubleProperty(OriginalTopMargin);
+            const bool body = flowing && !imageOnly && !bare.isEmpty() && format.headingLevel() == 0 && !block.textList() &&
+                              document->frameAt(block.position()) == document->rootFrame() &&
+                              format.leftMargin() <= leftEdge + 1 && format.indent() == 0 && !format.nonBreakableLines();
+            if (body && paragraphs != QLatin1String("book")) {
+                const bool sceneBreak = top > SceneBreakPixels;
+                const bool indent = paragraphs == QLatin1String("indent");
+                format.setTopMargin(sceneBreak ? top : 0);
+                format.setBottomMargin(indent ? 0 : std::round(em * 0.7));
+                format.setTextIndent(indent && afterBody && !sceneBreak ? std::round(em * 1.5) : 0);
+            } else {
+                format.setTopMargin(top);
+                format.setBottomMargin(format.doubleProperty(OriginalBottomMargin));
+                format.setTextIndent(format.doubleProperty(OriginalIndent));
+            }
+            afterBody = body;
             cursor.setPosition(block.position());
             cursor.setBlockFormat(format);
 
@@ -825,12 +868,13 @@ void Reader::setPage(int page, bool keepPlace) {
     scheduleSave();
 }
 
-void Reader::next() {
+void Reader::next(bool automatic) {
     if (!isOpen() || atEnd())
         return;
     if (m_pinned && !m_pinByHand)
         unpin();
-    trackReading(m_page);
+    // A page the timer turned says nothing about how fast this reader reads.
+    trackReading(m_page, !automatic);
     if (m_slice + 1 < sliceCount()) {
         setSlice(m_slice + 1);
         return;
@@ -1269,11 +1313,11 @@ int Reader::locationCount() const {
 
 // Kindle's trick: time how long each page took, and learn the reader's pace
 // from the pages that look like reading rather than flipping or a break.
-void Reader::trackReading(int fromPage) {
-    const double seconds = m_pageTimer.restart() / 1000.0;
+// The characters still to read in view: from the reader's place to the end
+// of the last page shown, or of the slice in fit text.
+qint64 Reader::charactersInView(int fromPage) const {
     qint64 characters = 0;
     if (m_pdf && m_fitText) {
-        // A slice is part of a page, so it says nothing about a page's length.
         const auto span = sliceSpan(fromPage, m_slice);
         for (const auto &word : pdfWords(fromPage))
             if (word.box.center().y() >= span.first && word.box.center().y() < span.second)
@@ -1282,15 +1326,28 @@ void Reader::trackReading(int fromPage) {
         for (int page = fromPage; page < viewEnd(); ++page)
             for (const auto &word : pdfWords(page))
                 characters += word.text.size() + 1;
-        if (characters > 0)
-            m_pdfCharactersPerPage = m_pdfCharactersPerPage * 0.8 + double(characters) / m_columns * 0.2;
     } else {
         const int endPage = fromPage + m_columns;
         const qint64 end = endPage >= pageCount() ? m_characterCount
                                                   : globalOffset(chapterOfPage(endPage), firstPositionOnPage(endPage));
         characters = end - globalOffset(m_chapter, m_offset);
     }
-    if (seconds > 4 && seconds < 600 && characters > 200)
+    return characters;
+}
+
+double Reader::viewSeconds() const {
+    if (!isOpen() || pageCount() == 0)
+        return 0;
+    return charactersInView(m_page) / m_preferences->readingSpeed();
+}
+
+void Reader::trackReading(int fromPage, bool learn) {
+    const double seconds = m_pageTimer.restart() / 1000.0;
+    const qint64 characters = charactersInView(fromPage);
+    // A slice is part of a page, so it says nothing about a page's length.
+    if (m_pdf && !m_fitText && characters > 0)
+        m_pdfCharactersPerPage = m_pdfCharactersPerPage * 0.8 + double(characters) / m_columns * 0.2;
+    if (learn && seconds > 4 && seconds < 600 && characters > 200)
         m_preferences->learnReadingSpeed(characters / seconds);
     // A page turned in a few seconds was flipped past, not read.
     if (m_record && !m_readOnly)
@@ -1307,9 +1364,9 @@ QVariantList Reader::lines() const {
     QVariantList list;
     if (!isOpen() || pageCount() == 0)
         return list;
-    auto band = [&](int column, double y, double height) {
+    auto band = [&](int column, double y, double height, int characters) {
         const QRectF rect = columnRect(column);
-        list << QVariantMap{{"x", rect.x()}, {"y", y}, {"width", rect.width()}, {"height", height}};
+        list << QVariantMap{{"x", rect.x()}, {"y", y}, {"width", rect.width()}, {"height", height}, {"characters", characters}};
     };
     for (int column = 0; column < m_columns && m_page + column < pageCount(); ++column) {
         const int page = m_page + column;
@@ -1317,25 +1374,27 @@ QVariantList Reader::lines() const {
             // Words that share a line, in the order they sit down the page.
             const QTransform transform = pdfTransform(column);
             const auto span = m_fitText ? sliceSpan(page, m_slice) : QPair<double, double>(-1e9, 1e9);
-            QList<QRectF> rows;
+            QList<QPair<QRectF, int>> rows;
             for (const auto &word : pdfWords(page)) {
                 const QRectF box = word.box;
                 if (box.center().y() < span.first || box.center().y() >= span.second)
                     continue;
                 bool joined = false;
                 for (auto &row : rows)
-                    if (std::abs(row.center().y() - box.center().y()) < qMax(row.height(), box.height()) / 2) {
-                        row = row.united(box);
+                    if (std::abs(row.first.center().y() - box.center().y()) < qMax(row.first.height(), box.height()) / 2) {
+                        row.first = row.first.united(box);
+                        row.second += word.text.size() + 1;
                         joined = true;
                         break;
                     }
                 if (!joined)
-                    rows << box;
+                    rows << qMakePair(box, int(word.text.size()) + 1);
             }
-            std::sort(rows.begin(), rows.end(), [](const QRectF &a, const QRectF &b) { return a.top() < b.top(); });
+            std::sort(rows.begin(), rows.end(),
+                      [](const QPair<QRectF, int> &a, const QPair<QRectF, int> &b) { return a.first.top() < b.first.top(); });
             for (const auto &row : rows) {
-                const QRectF mapped = transform.mapRect(row);
-                band(column, mapped.top(), mapped.height());
+                const QRectF mapped = transform.mapRect(row.first);
+                band(column, mapped.top(), mapped.height(), row.second);
             }
             continue;
         }
@@ -1352,7 +1411,7 @@ QVariantList Reader::lines() const {
                 const double y = rect.top() + line.y() - top;
                 if (y + line.height() <= 0 || y >= m_pageSize.height())
                     continue;
-                band(column, y, line.height());
+                band(column, y, line.height(), line.textLength());
             }
         }
     }

@@ -237,6 +237,15 @@ Popup {
                     value: prefs.margins
                     onPicked: value => prefs.margins = value
                 }
+                Label { text: qsTr("Paragraphs"); color: Tokens.textSecondary; font.pixelSize: 12; Layout.topMargin: 8 }
+                Segmented {
+                    Layout.fillWidth: true
+                    spacing: 4
+                    accessibleName: qsTr("Paragraphs")
+                    options: [["book", qsTr("Book’s")], ["indent", qsTr("Indented")], ["space", qsTr("Spaced")]]
+                    value: prefs.paragraphs
+                    onPicked: value => prefs.paragraphs = value
+                }
             }
 
             Switch {

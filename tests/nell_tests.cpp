@@ -1128,6 +1128,122 @@ private slots:
         QVERIFY2(dark < sampled / 3, qPrintable(QString("%1 of %2 samples dark").arg(dark).arg(sampled)));
     }
 
+    void paragraphStyleIndentsOrSpaces()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(library.add(makeEpub(dir.path()))));
+        reader.setGeometry(420, 640, 1, 20);
+        QTRY_VERIFY(reader.pageCount() > 3);
+        // The second page is running text: paragraphs of a few lines each.
+        reader.goToPage(1);
+        // From each line's top to the next, smallest first. A new layout
+        // keeps the reader's place, which may then be on another page, so
+        // it's the second page that is measured each time.
+        const auto gaps = [&] {
+            reader.goToPage(1);
+            QList<double> found;
+            const QVariantList lines = reader.lines();
+            for (int i = 1; i < lines.size(); ++i)
+                found << lines[i].toMap()["y"].toDouble() - lines[i - 1].toMap()["y"].toDouble();
+            std::sort(found.begin(), found.end());
+            return found;
+        };
+        // As the book has it: the fixture's paragraphs keep Qt's own gap.
+        QCOMPARE(preferences.paragraphs(), QString("book"));
+        const QList<double> book = gaps();
+        QVERIFY(book.size() > 8);
+        QVERIFY2(book.last() - book.first() > 6, qPrintable(QString("%1 to %2").arg(book.first()).arg(book.last())));
+        const int bookPages = reader.pageCount();
+
+        // Indented: every line follows the last at the same distance.
+        preferences.setParagraphs("indent");
+        const QList<double> indented = gaps();
+        QVERIFY2(indented.last() - indented.first() < 1,
+                 qPrintable(QString("%1 to %2").arg(indented.first()).arg(indented.last())));
+        const int indentedPages = reader.pageCount();
+        QVERIFY(indentedPages < bookPages);
+
+        // Spaced: a gap of most of a line between paragraphs.
+        preferences.setParagraphs("space");
+        const QList<double> spaced = gaps();
+        QVERIFY2(spaced.last() - spaced.first() > preferences.fontSize() * 0.5,
+                 qPrintable(QString("%1 to %2").arg(spaced.first()).arg(spaced.last())));
+        QVERIFY(reader.pageCount() > indentedPages);
+
+        // The choice is kept, and anything else is refused.
+        preferences.setParagraphs("sideways");
+        QCOMPARE(preferences.paragraphs(), QString("space"));
+        QCOMPARE(Preferences(nullptr, dir.path() + "/nell.conf").paragraphs(), QString("space"));
+
+        // Back to the book's own, exactly as it was.
+        preferences.setParagraphs("book");
+        QCOMPARE(gaps(), book);
+        QCOMPARE(reader.pageCount(), bookPages);
+    }
+
+    void autoTurnWaitsAsLongAsThePageTakes()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(library.add(makeEpub(dir.path()))));
+        reader.setGeometry(420, 640, 1, 20);
+        QTRY_VERIFY(reader.pageCount() > 3);
+        reader.goToPage(1);
+
+        // The time for a page is its characters at the reader's pace, and
+        // the lines in view account for those characters.
+        int characters = 0;
+        for (const auto &line : reader.lines())
+            characters += line.toMap()["characters"].toInt();
+        QVERIFY(characters > 300);
+        const double seconds = reader.viewSeconds();
+        QVERIFY2(qAbs(seconds * preferences.readingSpeed() - characters) < characters * 0.1,
+                 qPrintable(QString("%1 s for %2 characters").arg(seconds).arg(characters)));
+        // A faster reader gets a shorter wait.
+        for (int i = 0; i < 20; ++i)
+            preferences.learnReadingSpeed(60);
+        QVERIFY(reader.viewSeconds() < seconds * 0.6);
+
+        // The pace factor moves in tenths between a half and double.
+        QCOMPARE(preferences.autoTurnPace(), 1.0);
+        preferences.setAutoTurnPace(1.1);
+        preferences.setAutoTurnPace(preferences.autoTurnPace() + 0.1);
+        QCOMPARE(preferences.autoTurnPace(), 1.2);
+        preferences.setAutoTurnPace(9);
+        QCOMPARE(preferences.autoTurnPace(), 2.0);
+        preferences.setAutoTurnPace(0);
+        QCOMPARE(preferences.autoTurnPace(), 0.5);
+        QCOMPARE(Preferences(nullptr, dir.path() + "/nell.conf").autoTurnPace(), 0.5);
+    }
+
+    void aPageTheTimerTurnedTeachesNothing()
+    {
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        Reader reader(&library, &preferences);
+        QVERIFY(reader.openBook(library.add(makeEpub(dir.path()))));
+        reader.setGeometry(420, 640, 1, 20);
+        QTRY_VERIFY(reader.pageCount() > 4);
+        reader.goToPage(1);
+        const double speed = preferences.readingSpeed();
+        // Long enough on the page to count as reading it (over four seconds).
+        reader.next();
+        QTest::qWait(4100);
+        reader.next(true);
+        QCOMPARE(reader.page(), 3);
+        QCOMPARE(preferences.readingSpeed(), speed);
+        // The same wait before the reader's own turn does teach.
+        QTest::qWait(4100);
+        reader.next();
+        QVERIFY(preferences.readingSpeed() != speed);
+    }
+
     void notesExportKeepsEverything()
     {
         QTemporaryDir dir;

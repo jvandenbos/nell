@@ -23,6 +23,9 @@ class Preferences : public QObject {
     Q_PROPERTY(bool justify READ justify WRITE setJustify NOTIFY layoutChanged)
     Q_PROPERTY(bool hyphenate READ hyphenate WRITE setHyphenate NOTIFY layoutChanged)
     Q_PROPERTY(int margins READ margins WRITE setMargins NOTIFY layoutChanged)
+    // How paragraphs are told apart: "book" as the publisher set them,
+    // "indent" a first-line indent and no gap, "space" a gap and no indent.
+    Q_PROPERTY(QString paragraphs READ paragraphs WRITE setParagraphs NOTIFY layoutChanged)
     Q_PROPERTY(bool spread READ spread WRITE setSpread NOTIFY layoutChanged)
     // In fit text, leave out a PDF's running heads and feet. Separate from
     // fit text itself, so it can be undone on its own if it hides too much.
@@ -37,6 +40,9 @@ class Preferences : public QObject {
     // A band across the line being read, the rest of the page dimmed.
     Q_PROPERTY(bool ruler READ ruler WRITE setRuler NOTIFY rulerChanged)
     Q_PROPERTY(int dailyGoal READ dailyGoal WRITE setDailyGoal NOTIFY goalChanged)
+    // Auto page turn goes at the learned reading speed times this: 0.5 to 2.
+    Q_PROPERTY(double autoTurnPace READ autoTurnPace WRITE setAutoTurnPace NOTIFY autoTurnPaceChanged)
+    Q_PROPERTY(double readingSpeed READ readingSpeed NOTIFY readingSpeedChanged)
     Q_PROPERTY(QString downloadDirectory READ downloadDirectory WRITE setDownloadDirectory NOTIFY downloadDirectoryChanged)
 
 public:
@@ -70,6 +76,8 @@ public:
     void setHyphenate(bool hyphenate);
     int margins() const { return m_margins; }
     void setMargins(int margins);
+    QString paragraphs() const { return m_paragraphs; }
+    void setParagraphs(const QString &style);
     bool spread() const { return m_spread; }
     void setSpread(bool spread);
     bool hideRunningHeads() const { return m_hideRunningHeads; }
@@ -89,6 +97,8 @@ public:
     // Minutes of reading a day to aim for, 5 to 600.
     int dailyGoal() const { return m_dailyGoal; }
     void setDailyGoal(int minutes);
+    double autoTurnPace() const { return m_autoTurnPace; }
+    void setAutoTurnPace(double pace);
     // Where books got from a catalog are put; ~/Documents/Books unless set.
     QString downloadDirectory() const { return m_downloadDirectory; }
     void setDownloadDirectory(const QString &directory);
@@ -111,6 +121,8 @@ signals:
     void highlightColorChanged();
     void reduceMotionChanged();
     void rulerChanged();
+    void autoTurnPaceChanged();
+    void readingSpeedChanged();
 
 private:
     // Every write goes through here, so a file that mustn't be written isn't.
@@ -139,4 +151,6 @@ private:
     int m_dailyGoal = 30;
     QString m_downloadDirectory;
     bool m_ruler;
+    QString m_paragraphs;
+    double m_autoTurnPace = 1.0;
 };

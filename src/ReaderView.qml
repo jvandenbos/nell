@@ -114,6 +114,10 @@ Item {
             reader.clearSelection()
             return
         }
+        if (autoTurn) {
+            autoTurn = false
+            return
+        }
         // From the toolbar, Esc goes back to the page before the library.
         if (chromeFocused) {
             pages.forceActiveFocus()
@@ -223,6 +227,7 @@ Item {
             }
         } else {
             rulerIndex = next
+            rulerMoved()
         }
     }
 
@@ -235,6 +240,96 @@ Item {
                 best = i
         return best
     }
+
+    // ---- Auto page turn ---------------------------------------------------
+    // Pages turn themselves, each after the time what's in view takes this
+    // reader (the pace Nell learned from their own page turns, times a
+    // factor they can nudge). Never on when a book opens. It waits while
+    // anything is open over the page, text is selected, or a page is
+    // pinned; not for the window losing focus, which on a tiling desktop
+    // where focus follows the pointer is a nudge of the mouse. With the
+    // ruler up it paces line by line instead, each line for its share of
+    // the page's characters.
+    property bool autoTurn: false
+    readonly property bool autoTurnWaiting: !pageKeys || reader.hasSelection || reader.pinned
+    // A picture or a chapter's title page still gets a moment.
+    readonly property real autoTurnSeconds: Math.max(4, reader.viewSeconds / prefs.autoTurnPace)
+    property real autoTurnElapsed: 0
+    readonly property real autoTurnFraction: Math.min(1, autoTurnElapsed / (autoTurnSeconds * 1000))
+    // About 5.3 characters to a word, spaces included; to the nearest five.
+    readonly property int wordsPerMinute: Math.round(prefs.readingSpeed * prefs.autoTurnPace * 60 / 5.3 / 5) * 5
+    onAutoTurnChanged: {
+        autoTurnElapsed = 0
+        if (autoTurn) {
+            rulerMoved()
+            autoTurnShown.restart()
+        }
+    }
+
+    function toggleAutoTurn() {
+        if (!autoTurn && reader.atEnd)
+            return
+        autoTurn = !autoTurn
+    }
+
+    function nudgePace(direction) {
+        prefs.autoTurnPace = prefs.autoTurnPace + direction * 0.1
+        autoTurnShown.restart()
+    }
+
+    // The share of the view's characters above line `index`.
+    function lineStart(index) {
+        let before = 0, total = 0
+        for (let i = 0; i < lines.length; ++i) {
+            if (i < index)
+                before += lines[i].characters
+            total += lines[i].characters
+        }
+        return total > 0 ? before / total : 0
+    }
+
+    // The ruler was put on a line by hand: the pacer carries on from there.
+    function rulerMoved() {
+        if (autoTurn && prefs.ruler && lines.length)
+            autoTurnElapsed = lineStart(rulerIndex) * autoTurnSeconds * 1000
+    }
+
+    function autoTurnTick(elapsed) {
+        autoTurnElapsed += elapsed
+        if (autoTurnElapsed >= autoTurnSeconds * 1000) {
+            if (reader.atEnd) {
+                autoTurn = false
+                return
+            }
+            reader.next(true)
+            return
+        }
+        if (prefs.ruler && lines.length) {
+            let index = rulerIndex
+            while (index + 1 < lines.length && lineStart(index + 1) <= autoTurnFraction)
+                ++index
+            if (index !== rulerIndex)
+                rulerIndex = index
+        }
+    }
+
+    Timer {
+        id: autoTurnTimer
+        property real last: 0
+        interval: 100
+        repeat: true
+        running: view.autoTurn && !view.autoTurnWaiting
+        onRunningChanged: last = Date.now()
+        onTriggered: {
+            const now = Date.now()
+            // A machine that slept doesn't wake to a run of page turns.
+            view.autoTurnTick(Math.min(250, now - last))
+            last = now
+        }
+    }
+    // Its chip shows for a moment when it starts or the pace changes, and
+    // whenever the controls are up.
+    Timer { id: autoTurnShown; interval: 4000 }
 
     // ---- Page peek --------------------------------------------------------
     // ` pins the page; ` again comes back. Held down, it comes back on release.
@@ -266,11 +361,14 @@ Item {
     Connections {
         target: reader
         function onPositionChanged() {
+            // A new page or a new slice of one: its time starts over.
+            view.autoTurnElapsed = 0
             if (reader.page === view.lastPage)
                 return
             view.turnDirection = reader.page > view.lastPage ? 1 : -1
             view.lastPage = reader.page
-            view.rulerIndex = view.turnDirection > 0 ? 0 : Math.max(0, reader.lines.length - 1)
+            // Paced, a page gone back to is read from its top again.
+            view.rulerIndex = view.turnDirection > 0 || view.autoTurn ? 0 : Math.max(0, reader.lines.length - 1)
             if (!Tokens.reduceMotion)
                 turn.restart()
         }
@@ -311,6 +409,9 @@ Item {
     Shortcut { context: Qt.ApplicationShortcut; sequences: ["Ctrl+=", "Ctrl++"]; enabled: (!view.pdf || reader.fitText) && !win.textEntry; onActivated: prefs.fontSize += 1 }
     Shortcut { context: Qt.ApplicationShortcut; sequences: ["Ctrl+-"]; enabled: (!view.pdf || reader.fitText) && !win.textEntry; onActivated: prefs.fontSize -= 1 }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "B"; enabled: view.pageKeys; onActivated: reader.toggleBookmark() }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "G"; enabled: view.pageKeys; onActivated: view.toggleAutoTurn() }
+    Shortcut { context: Qt.ApplicationShortcut; sequences: ["+", "="]; enabled: view.pageKeys && view.autoTurn; onActivated: view.nudgePace(1) }
+    Shortcut { context: Qt.ApplicationShortcut; sequence: "-"; enabled: view.pageKeys && view.autoTurn; onActivated: view.nudgePace(-1) }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "H"; enabled: view.selectionKeys; onActivated: view.highlightSelection(prefs.highlightColor) }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "N"; enabled: view.selectionKeys; onActivated: view.noteSelection() }
     Shortcut { context: Qt.ApplicationShortcut; sequence: "D"; enabled: view.selectionKeys; onActivated: view.defineSelection() }
@@ -395,8 +496,10 @@ Item {
             enabled: prefs.ruler
             onPointChanged: {
                 const at = view.lineAt(point.position.y)
-                if (at >= 0)
+                if (at >= 0 && at !== view.rulerIndex) {
                     view.rulerIndex = at
+                    view.rulerMoved()
+                }
             }
         }
 
@@ -474,6 +577,85 @@ Item {
             Icon { name: "bookmark"; filled: true; color: Tokens.accentText; size: 14; anchors.verticalCenter: parent.verticalCenter }
             Label { id: pinLabel; text: pinChip.text; color: Tokens.text; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
         }
+    }
+
+    // Auto page turn's chip: the pace, a nudge either way, and the way out.
+    Rectangle {
+        id: autoChip
+        visible: view.autoTurn && (view.chrome || autoTurnShown.running || autoChipHover.hovered
+                                   || (view.autoTurnWaiting && !view.panelOpen && !view.primaryOpen))
+        anchors.horizontalCenter: parent.horizontalCenter
+        // In the foot margin, clear of the text; above the bottom bar when
+        // the controls are up, and above the pin's chip when that is.
+        y: pinChip.visible ? pinChip.y - height - 6
+           : view.chrome || view.panelOpen ? view.height - bottomBar.height - height - 8
+           : view.height - (view.bottomMargin + height) / 2
+        z: 1
+        implicitHeight: 36
+        implicitWidth: autoRow.implicitWidth + 12
+        radius: 18
+        color: Tokens.surfaceRaised
+        border.width: 1
+        border.color: Tokens.border
+        HoverHandler { id: autoChipHover }
+        Accessible.role: Accessible.Grouping
+        Accessible.name: qsTr("Auto page turn")
+        Row {
+            id: autoRow
+            anchors.centerIn: parent
+            spacing: 2
+            IconButton {
+                anchors.verticalCenter: parent.verticalCenter
+                implicitWidth: 30; implicitHeight: 30
+                iconName: "minus"
+                tip: qsTr("Slower (−)")
+                enabled: prefs.autoTurnPace > 0.5
+                opacity: enabled ? 1 : 0.4
+                focusPolicy: Qt.NoFocus
+                onClicked: view.nudgePace(-1)
+            }
+            Label {
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.max(implicitWidth, 132)
+                horizontalAlignment: Text.AlignHCenter
+                text: view.autoTurnWaiting ? qsTr("Paused") : qsTr("%1 words a minute").arg(view.wordsPerMinute.toLocaleString(Qt.locale(), 'f', 0))
+                color: Tokens.text
+                font.pixelSize: 12
+            }
+            IconButton {
+                anchors.verticalCenter: parent.verticalCenter
+                implicitWidth: 30; implicitHeight: 30
+                iconName: "plus"
+                tip: qsTr("Faster (+)")
+                enabled: prefs.autoTurnPace < 2
+                opacity: enabled ? 1 : 0.4
+                focusPolicy: Qt.NoFocus
+                onClicked: view.nudgePace(1)
+            }
+            IconButton {
+                anchors.verticalCenter: parent.verticalCenter
+                implicitWidth: 30; implicitHeight: 30
+                iconName: "close"
+                tip: qsTr("Stop turning pages (G)")
+                focusPolicy: Qt.NoFocus
+                onClicked: view.autoTurn = false
+            }
+        }
+    }
+
+    // How far through this page's time it is: a hairline along the foot of
+    // the window. Left out with motion reduced; the pages still turn.
+    Rectangle {
+        visible: view.autoTurn && !Tokens.reduceMotion
+        x: 0
+        y: view.height - height
+        z: 1
+        height: 2
+        width: view.width * view.autoTurnFraction
+        color: Tokens.accent
+        opacity: view.autoTurnWaiting ? 0.25 : 0.55
+        // The timer ticks ten times a second; this joins the steps up.
+        Behavior on width { enabled: view.autoTurnElapsed > 0; NumberAnimation { duration: 100 } }
     }
 
     ParallelAnimation {
@@ -681,6 +863,17 @@ Item {
 
                 IconButton { id: searchButton; iconName: "search"; iconColor: view.ink; tip: qsTr("Search (/)"); onClicked: view.togglePanel(searchPanel) }
                 IconButton { id: aaButton; text: "Aa"; iconColor: view.ink; tip: qsTr("Appearance (A)"); accessibleName: qsTr("Appearance"); onClicked: view.togglePanel(appearance) }
+                IconButton {
+                    iconName: "play"
+                    iconColor: view.autoTurn ? Tokens.accentText : view.ink
+                    iconFilled: view.autoTurn
+                    tip: view.autoTurn ? qsTr("Stop turning pages (G)") : qsTr("Turn pages for me (G)")
+                    enabled: view.autoTurn || !reader.atEnd
+                    opacity: enabled ? 1 : 0.4
+                    Accessible.checkable: true
+                    Accessible.checked: view.autoTurn
+                    onClicked: { pages.forceActiveFocus(); view.toggleAutoTurn() }
+                }
                 IconButton {
                     iconName: "bookmark"
                     iconColor: reader.bookmarked ? Tokens.bookmark : view.ink
