@@ -1101,6 +1101,33 @@ private slots:
         QVERIFY(start > 0);
     }
 
+    void aColorKeywordQtCannotReadIsNotBlack()
+    {
+        // Project Gutenberg's stylesheet, as its books carry it in 2026.
+        QTemporaryDir dir;
+        Library library(dir.path() + "/data", dir.path() + "/cache");
+        Preferences preferences(nullptr, dir.path() + "/nell.conf");
+        Reader reader(&library, &preferences);
+        QCOMPARE(preferences.readingTheme(), QString("original"));
+        QVERIFY(reader.openBook(library.add(makeEpub(dir.path(), "The Test Book", {}, {}, {},
+                                                     "body {\n    background: initial;\n    color: initial\n    }\n"))));
+        reader.setGeometry(420, 640, 1, 20);
+        QTRY_VERIFY(reader.pageCount() > 3);
+        reader.goToPage(1);
+        QImage image(420, 640, QImage::Format_ARGB32_Premultiplied);
+        image.fill(Qt::white);
+        QPainter painter(&image);
+        reader.paint(&painter, image.size());
+        painter.end();
+        // Text on a white page: most of it is still white.
+        int dark = 0;
+        for (int y = 0; y < image.height(); y += 4)
+            for (int x = 0; x < image.width(); x += 4)
+                dark += qGray(image.pixel(x, y)) < 96;
+        const int sampled = (image.width() / 4) * (image.height() / 4);
+        QVERIFY2(dark < sampled / 3, qPrintable(QString("%1 of %2 samples dark").arg(dark).arg(sampled)));
+    }
+
     void notesExportKeepsEverything()
     {
         QTemporaryDir dir;
@@ -1715,7 +1742,7 @@ private:
     // A small EPUB 3 with a nav document, two chapters, an anchor, and a cover.
     static QString makeEpub(const QString &directory, const QByteArray &title = "The Test Book",
                             const QByteArray &extras = {}, const QByteArray &opening = {},
-                            const QByteArray &closing = {})
+                            const QByteArray &closing = {}, const QByteArray &css = {})
     {
         const QString root = directory + "/source";
         write(root + "/mimetype", "application/epub+zip");
@@ -1745,7 +1772,7 @@ private:
 </ol></nav>
 <nav epub:type="landmarks"><ol><li><a href="text/one.xhtml">Start</a></li></ol></nav>
 </body></html>)");
-        write(root + "/OEBPS/style.css", "p { color: red; font-family: Comic Sans; line-height: 3; text-indent: 1em }\n");
+        write(root + "/OEBPS/style.css", "p { color: red; font-family: Comic Sans; line-height: 3; text-indent: 1em }\n" + css);
         QByteArray filler;
         for (int i = 0; i < 40; ++i)
             filler += "<p>Alice was beginning to get very tired of sitting by her sister on the bank, and of having "

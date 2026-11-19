@@ -69,6 +69,14 @@ protected:
         static const QRegularExpression fonts(R"((?<![-\w])(font-family|font-size\s*:\s*[\d.]+\s*(px|pt)|font-size\s*:\s*(x+-)?(small|medium|large))\s*[^;}]*;?)",
                                               QRegularExpression::CaseInsensitiveOption);
         css.remove(always);
+        // Qt's stylesheet reader knows no CSS-wide keywords and paints a
+        // color it can't read as black: Project Gutenberg's own stylesheet
+        // says "background: initial", which made a black page of every one
+        // of its books in the Original theme.
+        static const QRegularExpression keywords(
+            R"((?<![-\w])(color|background(-color)?)\s*:\s*(initial|inherit|unset|revert(-layer)?|currentcolor)\s*(!important\s*)?(;|(?=\})))",
+            QRegularExpression::CaseInsensitiveOption);
+        css.remove(keywords);
         if (!m_keepColors)
             css.remove(colors);
         if (!m_keepFonts)
