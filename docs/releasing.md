@@ -57,8 +57,8 @@ It deliberately omits the local recipe's `conflicts`/`replaces` on `quire`:
 that name belongs to an unrelated AUR package.
 
 The bot only moves `pkgver` and the checksum. A release that changes what
-Nell depends on needs the published recipe's `depends` edited by hand: the
-release after 0.4.1 adds `zlib`.
+Nell depends on needs the published recipe's `depends` edited by hand, as
+0.5.0 did for `zlib`.
 
 Until it merges, the PR waits for a maintainer's `build-approved` label
 (still unlabelled on 2026-11-17, when the branch was merged up to `master`
