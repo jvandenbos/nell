@@ -56,6 +56,10 @@ tags, so a pushed release tag is picked up by their bot without another PR.
 It deliberately omits the local recipe's `conflicts`/`replaces` on `quire`:
 that name belongs to an unrelated AUR package.
 
+The bot only moves `pkgver` and the checksum. A release that changes what
+Nell depends on needs the published recipe's `depends` edited by hand: the
+release after 0.4.1 adds `zlib`.
+
 Until it merges, the PR waits for a maintainer's `build-approved` label
 (still unlabelled on 2026-11-17, when the branch was merged up to `master`
 and a comment asked for it). Their `release/owners.json` needs a line per

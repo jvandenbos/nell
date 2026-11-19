@@ -174,6 +174,9 @@ version 1. A file `QSettings` can't parse, or one with a higher `version`, is
 read but never written. The keys are `reading/theme`, `reading/font`,
 `reading/fontSize` (12 to 44), `reading/lineSpacing` (1.0 to 2.0),
 `reading/margins` (0 to 2), `reading/justify` (off unless set),
+`reading/paragraphs` (`book`, `indent` or `space`; `book` unless set),
+`reading/autoTurnPace` (0.5 to 2.0: auto page turn's speed against the
+learned one),
 `reading/spread`, `reading/hideRunningHeads` (fit text leaves out running
 heads; default true), `reading/infoMode` (0 to 4: chapter time, book time,
 pages left in chapter, location or page, percent), `reading/speed` (the

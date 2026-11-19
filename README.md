@@ -20,6 +20,9 @@ looked up, and your highlights and notes exportable as Markdown.
 - **Reading.** Pages are paginated to the window, two side by side when there's
   room. Themes (Original, Paper, Calm, Quiet, Night, and Omarchy, which follows
   your desktop theme), typeface, size, line spacing, margins, and justification.
+  Paragraphs can be set as the book has them, indented with no gap between
+  them as a printed novel is, or spaced apart with no indent; headings, lists,
+  verse and scene breaks stay the publisher's.
   Original keeps an EPUB's own colors; the other themes use theirs.
   Dark themes show PDFs inverted.
 - **Small print.** A PDF whose text would be tiny in the window switches to fit
@@ -32,8 +35,14 @@ looked up, and your highlights and notes exportable as Markdown.
   measure and isn't fitted. `Ctrl++` and `Ctrl+−` change the zoom; Appearance
   turns it off for that book.
 - **Marking.** Select text to highlight it in five colors or underline it, add a
-  note, copy it, look it up in Wiktionary, or search for it. Bookmark pages.
+  note, copy it, look it up, or search for it. Bookmark pages.
   Everything undoes.
+- **A dictionary, offline if you like.** `D` looks the selected word up and
+  keeps it in the book's Words list. With no dictionary installed that's
+  Wiktionary. Put a StarDict dictionary in `~/.local/share/nell/dictionaries/`
+  and it answers instead, at once and without the network; Wiktionary is asked
+  only for words it doesn't have, and is a button away on the ones it does
+  (see [Dictionaries](#dictionaries)).
 - **Finding.** Contents, bookmarks, notes, and words in one panel; full-text
   search of the whole book.
 - **Footnotes and pictures.** A footnote reference opens its note in a card
@@ -44,6 +53,14 @@ looked up, and your highlights and notes exportable as Markdown.
   bundled; a book in another language is set without. Off in Appearance.
 - **Reading ruler.** `R` puts a band on the line being read and dims the rest;
   `↓` and `↑` then move it a line at a time, turning the page at the ends.
+- **Auto page turn.** `G` turns the pages for you, each after as long as it
+  takes you to read what's on it: the pace is the one Nell has learned from
+  your own page turns. `+` and `−` make it faster or slower, a hairline along
+  the foot of the window shows how far through the page's time you are, and
+  with the ruler up it moves down the page line by line at the same pace. It
+  waits while a panel is open or text is selected, and stops at the end of the
+  book, on `G`, or on `Esc`. Turning a page yourself is fine, and is still
+  learned from; the pages it turns aren't.
 - **Page peek.** `` ` `` pins the page; look anywhere, press it again to come
   back. Held down, it comes back on release. A chip at the foot of the page
   is the way back with the mouse.
@@ -83,6 +100,7 @@ Press `?` in the app to see them all.
 | `A` | Appearance |
 | `Ctrl++` `Ctrl+−` | Bigger or smaller text |
 | `R` | Reading ruler; `↓` `↑` then move it a line |
+| `G` | Turn pages for me at my reading pace; `+` `−` then change the pace |
 | `` ` `` | Pin the page and press again to come back; hold to peek |
 | `B` | Bookmark the page |
 | `H` / `N` / `D` | Highlight (in the last color used), note, or look up the selection |
@@ -118,7 +136,36 @@ nell add <file>...        # add EPUB and PDF books
 nell info <book>          # title, author, and contents
 nell notes <book>         # highlights and notes as Markdown (--json for data)
 nell stats                # today's reading, the streak, the week, the badges
+nell define [word]        # look a word up in the installed dictionaries, or list them
 ```
+
+## Dictionaries
+
+Nell reads [StarDict](https://en.wikipedia.org/wiki/StarDict) dictionaries,
+the format KOReader, GoldenDict and sdcv use, so the ones made for those
+work. A dictionary is three files with one name: `.ifo`, `.idx` (or
+`.idx.gz`) and `.dict` (or `.dict.dz`), sometimes with a `.syn`. Unpack it
+anywhere under `~/.local/share/nell/dictionaries/`; it's found the next time
+a word is looked up, without restarting. `~/.stardict/dic` and
+`/usr/share/stardict/dic` are read too. [FreeDict](https://freedict.org/downloads/)
+has free translating dictionaries in the format (pick "stardict").
+
+The format doesn't say what language a dictionary is for, and a
+German–English one would answer for "seen" in an English book. So where a
+dictionary is put says it: one in a folder named for a language (`de/`), or
+named the way FreeDict names its own (`deu-eng`), answers only for books in
+that language. Any other answers for every book.
+
+```
+~/.local/share/nell/dictionaries/
+  en/websters/…        English books only
+  deu-eng/…            German books only (FreeDict's own name)
+  everything/…         every book
+```
+
+In an English book a word that isn't found is tried as the word it might be
+a form of, so "hurried" finds "hurry". `nell define` shows what's installed
+and `nell define <word>` what a lookup would find; it never asks Wiktionary.
 
 ## Where things are kept
 
@@ -128,6 +175,8 @@ nell stats                # today's reading, the streak, the week, the badges
   keeps this, so adding it again brings them back.
 - `~/.local/share/nell/reading.json` — the reading record: seconds and
   characters read, per day and per book.
+- `~/.local/share/nell/dictionaries/` — StarDict dictionaries you've put
+  there, read and never written.
 - `~/.local/share/nell/catalogs.json` — the catalogs and their logins,
   readable by you alone. Until the list is first changed there is no file,
   and the built-in catalogs are the list.
@@ -140,13 +189,14 @@ nell stats                # today's reading, the streak, the week, the badges
 
 Every JSON file carries a `version` field for its format.
 
-Looking up a word sends that word, and nothing else, to Wiktionary. A catalog
+Looking up a word an installed dictionary has sends nothing anywhere. Any
+other sends that word, and nothing else, to Wiktionary. A catalog
 is only spoken to while you browse it. The reading record stays on the machine.
 
 ## Building
 
 Nell is C++ and Qt Quick, built with qmake into one binary. It uses Poppler for
-PDFs and `bsdtar` (libarchive) to unpack EPUBs.
+PDFs, `bsdtar` (libarchive) to unpack EPUBs, and zlib to read dictionaries.
 
 ```sh
 bin/build     # build/nell

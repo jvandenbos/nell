@@ -6,6 +6,43 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Offline dictionaries. A StarDict dictionary under
+  `~/.local/share/nell/dictionaries/` (also `~/.stardict/dic` and
+  `/usr/share/stardict/dic`) answers a lookup at once and without the
+  network; Wiktionary is asked only for a word none has, and is a button on
+  the card for one that was found (`StarDict`, `Dictionaries`,
+  `Dictionary.offline`, `Dictionary.source`, `Dictionary.defineOnline`).
+  Reads `.idx` and `.idx.gz`, `.dict` and dictzip `.dict.dz` a chunk at a
+  time, `.syn`, and 32- and 64-bit offsets; plain text, HTML, XDXF and Pango
+  articles. A dictionary in a folder named for a language (`de/`) or named as
+  FreeDict names its own (`deu-eng`) answers only for books in that language.
+  In English, a word not found is tried as its base form.
+- `nell define [word]` looks a word up in the installed dictionaries, or
+  lists them; `--language`, `--json`. It never asks Wiktionary.
+- Auto page turn: `G` turns each page after the time what's on it takes at
+  the reader's learned pace, `+` and `−` change the pace
+  (`Reader.viewSeconds`, `Preferences.autoTurnPace`, `Reader.next(automatic)`).
+  With the reading ruler up it paces line by line. A page the timer turned
+  isn't learned from.
+- A paragraph style in Appearance: the book's, indented, or spaced
+  (`Preferences.paragraphs`). Only running text is restyled.
+
+### Changed
+
+- zlib is now a build and run dependency (dictionaries).
+
+### Fixed
+
+- A page is no longer painted black in the Original theme when a book's CSS
+  sets `color` or `background` to `initial`, `inherit`, `unset`, `revert` or
+  `currentcolor`, which Qt can't read as a color. Project Gutenberg's EPUBs
+  do.
+- A looked-up word is saved to Words whenever its definition arrives while
+  the card is up. It was only saved once the card had finished appearing, so
+  a quick answer from Wiktionary was shown and not kept.
+
 ## [0.4.1] - 2026-11-18
 
 ### Fixed

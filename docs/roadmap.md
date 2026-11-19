@@ -31,6 +31,19 @@ Small delights:
   log, streaks and per-book time cost little, and are what Apple Books'
   reading goals and Kindle's insights are loved for.
 
+## Done (round 2, 2026-11-18)
+
+From a look at CrossPoint Reader (an open firmware for e-ink readers) on
+2026-11-18. Three of its features were worth having on a desktop:
+
+- **Offline dictionaries.** StarDict files, read in place; Wiktionary only
+  for what they don't have.
+- **Auto page turn.** At the pace Nell already learns, not a fixed number of
+  seconds.
+- **A paragraph style.** The book's, indented, or spaced.
+
+Passed over: progress sync with KOReader, which stays under "Later, maybe".
+
 ## Next round
 
 - **Read aloud** with a local voice (Piper or Kokoro), the sentence
