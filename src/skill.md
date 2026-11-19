@@ -36,6 +36,11 @@ errors to stderr.
 - `nell stats` — today's reading minutes against the daily goal, the
   streak, the week, books finished this year and in all, hours read, and the
   badges earned. `--json` gives the numbers.
+- `nell define [word]` — look a word up in the StarDict dictionaries the
+  person has installed; with no word, list them. `--language en` limits it
+  to dictionaries for that language, `--json` gives each entry's
+  `dictionary`, `headword` and `text`. Offline only: exit 1 means no
+  installed dictionary has the word, not that the word doesn't exist.
 - `nell open [book]` — open the reader for the person. It needs their
   desktop, so do not wait on it.
 

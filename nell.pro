@@ -1,7 +1,7 @@
 QT += core gui qml quick quickcontrols2 dbus network
 
 CONFIG += c++17 release link_pkgconfig
-PKGCONFIG += poppler-qt6
+PKGCONFIG += poppler-qt6 zlib
 TARGET = nell
 TEMPLATE = app
 
@@ -23,6 +23,7 @@ HEADERS += \
     src/preferences.h \
     src/reader.h \
     src/record.h \
+    src/stardict.h \
     src/theme.h \
     src/translator.h
 
@@ -39,6 +40,7 @@ SOURCES += \
     src/preferences.cpp \
     src/reader.cpp \
     src/record.cpp \
+    src/stardict.cpp \
     src/theme.cpp \
     src/translator.cpp
 

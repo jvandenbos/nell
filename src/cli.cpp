@@ -5,6 +5,7 @@
 #include "preferences.h"
 #include "reader.h"
 #include "record.h"
+#include "stardict.h"
 
 #include <QCommandLineParser>
 #include <QDate>
@@ -307,6 +308,51 @@ int stats(const QStringList &arguments) {
     return 0;
 }
 
+// The installed dictionaries only: a command says what's on this machine,
+// and never sends a word anywhere.
+int define(const QStringList &arguments) {
+    Command command("define", "Look a word up in the StarDict dictionaries installed; with no word, list them.");
+    command.parser.addPositionalArgument("word", "The word to look up", "[word]");
+    command.parser.addOption({"language", "The language of the text the word is from, such as en or fr", "language"});
+    if (!command.parse(arguments))
+        return fail(command.parser.errorText());
+    if (command.parser.isSet("help"))
+        return print(stdout, command.parser.helpText()), 0;
+    Dictionaries dictionaries;
+    const QStringList names = dictionaries.names();
+    const QString word = command.parser.positionalArguments().join(' ');
+    const bool json = command.parser.isSet("json");
+    if (word.isEmpty()) {
+        if (json) {
+            print(QJsonObject{{"dictionaries", QJsonArray::fromStringList(names)},
+                              {"directories", QJsonArray::fromStringList(dictionaries.directories())}});
+            return 0;
+        }
+        if (names.isEmpty())
+            print(stdout, "No dictionaries installed. Put a StarDict dictionary (its .ifo, .idx and .dict files) in " +
+                              Dictionaries::userDirectory() + ".");
+        for (const QString &name : names)
+            print(stdout, name);
+        return 0;
+    }
+    if (names.isEmpty())
+        return fail("No dictionaries installed. Put a StarDict dictionary (its .ifo, .idx and .dict files) in " +
+                    Dictionaries::userDirectory() + ".");
+    const auto hits = dictionaries.lookup(word, command.parser.value("language"));
+    if (hits.isEmpty())
+        return fail("No installed dictionary has “" + word + "”.");
+    if (json) {
+        QJsonArray entries;
+        for (const auto &hit : hits)
+            entries << QJsonObject{{"dictionary", hit.dictionary}, {"headword", hit.headword}, {"text", hit.text}};
+        print(QJsonObject{{"word", word}, {"entries", entries}});
+        return 0;
+    }
+    for (int i = 0; i < hits.size(); ++i)
+        print(stdout, QString(i ? "\n" : "") + hits[i].headword + " — " + hits[i].dictionary + "\n" + hits[i].text);
+    return 0;
+}
+
 QString cliSummary() {
     return "Commands:\n"
            "  open [book]                     Open the reader, or a book in it (the default)\n"
@@ -316,6 +362,7 @@ QString cliSummary() {
            "  notes <book> [--markdown]       Print a book's highlights, notes, and words\n"
            "  import <file>                   Read back notes exported with notes --json\n"
            "  stats                           Today's reading, the streak, the week, the badges\n"
+           "  define [word]                   Look a word up in the installed dictionaries, or list them\n"
            "  skill [install]                 Print the skill for coding agents, or install it\n"
            "Every command takes --json and --help.";
 }
@@ -330,7 +377,7 @@ void adoptQuireStorage() {
 }
 
 bool isCliCommand(const QString &word) {
-    return QStringList{"list", "add", "info", "notes", "import", "stats", "skill", "help", "--help", "-h"}.contains(word);
+    return QStringList{"list", "add", "info", "notes", "import", "stats", "define", "skill", "help", "--help", "-h"}.contains(word);
 }
 
 int runCli(const QStringList &arguments) {
@@ -341,6 +388,7 @@ int runCli(const QStringList &arguments) {
            : command == "notes" ? notes(arguments)
            : command == "import" ? importNotes(arguments)
            : command == "stats" ? stats(arguments)
+           : command == "define" ? define(arguments)
            : command == "skill" ? skill(arguments)
                                 : (print(stdout, "Usage: nell [command] [book]\n\n" + cliSummary()), 0);
 }

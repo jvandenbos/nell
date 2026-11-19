@@ -9,6 +9,7 @@
 #include <QTemporaryDir>
 #include <QtTest>
 #include <poppler-qt6.h>
+#include <zlib.h>
 
 #include "catalog.h"
 #include "dictionary.h"
@@ -18,6 +19,7 @@
 #include "preferences.h"
 #include "reader.h"
 #include "record.h"
+#include "stardict.h"
 #include "theme.h"
 #include "translator.h"
 
@@ -1775,6 +1777,204 @@ private slots:
         QCOMPARE(Dictionary::parse(json, "de")[0].toMap()["partOfSpeech"].toString(), QString("Noun"));
     }
 
+    void starDictReadsPlainFiles()
+    {
+        QTemporaryDir dir;
+        // Out of order on purpose: an index isn't trusted to be sorted.
+        const QString ifo = writeStarDict(dir.path() + "/plain", "Plain & Simple", "m",
+                                          {{"zebra", "A striped horse."},
+                                           {"Apple", "A fruit."},
+                                           {"café", "A coffee house."},
+                                           {"hurry", "To go fast.\n\n\n\nOr to make go fast.  "}});
+        QString error;
+        auto dictionary = StarDict::open(ifo, &error);
+        QVERIFY2(dictionary, qPrintable(error));
+        QCOMPARE(dictionary->name(), QString("Plain & Simple"));
+        QCOMPARE(dictionary->wordCount(), 4);
+        QCOMPARE(dictionary->lookup("apple").size(), 1);
+        QCOMPARE(dictionary->lookup("apple").value(0).text, QString("A fruit."));
+        QCOMPARE(dictionary->lookup("APPLE").value(0).headword, QString("Apple"));
+        QCOMPARE(dictionary->lookup("Zebra").value(0).text, QString("A striped horse."));
+        // Case beyond ASCII, which the index's own order doesn't fold.
+        QCOMPARE(dictionary->lookup("Café").value(0).text, QString("A coffee house."));
+        // Tidied: no trailing spaces, no run of blank lines.
+        QCOMPARE(dictionary->lookup("hurry").value(0).text, QString("To go fast.\n\nOr to make go fast."));
+        QVERIFY(dictionary->lookup("pear").isEmpty());
+        QVERIFY(dictionary->lookup("").isEmpty());
+        QVERIFY(dictionary->problem().isEmpty());
+
+        write(dir.path() + "/other/note.ifo", "Not a dictionary\n");
+        QVERIFY(!StarDict::open(dir.path() + "/other/note.ifo", &error));
+        QVERIFY(error.contains("isn't a StarDict dictionary"));
+        write(dir.path() + "/half/dict.ifo", "StarDict's dict ifo file\nversion=2.4.2\nbookname=Half\n");
+        QVERIFY(!StarDict::open(dir.path() + "/half/dict.ifo", &error));
+        QVERIFY(error.contains("missing"));
+    }
+
+    void starDictReadsPackedFiles()
+    {
+        QTemporaryDir dir;
+        // Articles longer than a chunk, so each lookup crosses several.
+        QList<QPair<QByteArray, QByteArray>> entries;
+        for (const char *name : {"alpha", "beta", "gamma", "delta", "epsilon"}) {
+            const QByteArray word(name);
+            QByteArray article;
+            for (int i = 0; i < 30; ++i)
+                article += word + " line " + QByteArray::number(i) + "\n";
+            entries << qMakePair(word, article.trimmed());
+        }
+        std::sort(entries.begin(), entries.end());
+        const QString ifo = writeStarDict(dir.path() + "/packed", "Packed", "m", entries, true, {{"alphas", "alpha"}}, true);
+        QVERIFY(QFileInfo::exists(dir.path() + "/packed/dict.dict.dz"));
+        QVERIFY(QFileInfo::exists(dir.path() + "/packed/dict.idx.gz"));
+        QString error;
+        auto dictionary = StarDict::open(ifo, &error);
+        QVERIFY2(dictionary, qPrintable(error));
+        for (const auto &entry : entries) {
+            const auto found = dictionary->lookup(QString::fromUtf8(entry.first));
+            QCOMPARE(found.size(), 1);
+            QCOMPARE(found[0].text, QString::fromUtf8(entry.second));
+        }
+        // Another spelling, from the .syn file, and 64-bit offsets throughout.
+        QCOMPARE(dictionary->lookup("Alphas").value(0).headword, QString("alpha"));
+        QVERIFY(dictionary->problem().isEmpty());
+
+        // Plain gzip, without dictzip's chunk list, is unpacked whole.
+        const QString gamma = dictionary->lookup("gamma").value(0).text;
+        QVERIFY(gamma.startsWith("gamma line 0"));
+        QFile packed(dir.path() + "/packed/dict.dict.dz");
+        QVERIFY(packed.open(QIODevice::ReadOnly));
+        const QByteArray whole = StarDict::gunzip(packed.fileName(), 1 << 20);
+        QVERIFY(whole.startsWith("alpha line 0"));
+        write(dir.path() + "/packed/dict.dict.dz", gzip(whole));
+        auto again = StarDict::open(ifo, &error);
+        QVERIFY2(again, qPrintable(error));
+        QCOMPARE(again->lookup("gamma").value(0).text, gamma);
+
+        // A file cut short gives nothing, and says so, rather than garbage.
+        QFile index(dir.path() + "/packed/dict.idx.gz");
+        QVERIFY(index.open(QIODevice::ReadOnly));
+        const QByteArray cut = index.readAll().chopped(9);
+        index.close();
+        write(index.fileName(), cut);
+        auto damaged = StarDict::open(ifo, &error);
+        QVERIFY(damaged);
+        QVERIFY(damaged->lookup("alpha").isEmpty());
+        QVERIFY(damaged->problem().contains("damaged"));
+    }
+
+    void starDictArticlesBecomePlainText()
+    {
+        // The types named up front: the last field runs to the end.
+        QByteArray spoken("ˈæp.əl");
+        spoken.append('\0');
+        spoken.append("A <b>round</b> fruit.<br>Grows on trees.");
+        QCOMPARE(StarDict::plainText(spoken, "th"),
+                 QString("/ˈæp.əl/\nA round fruit.\nGrows on trees."));
+        // A type letter before each field, and a picture to step over.
+        QByteArray mixed("mA fruit.");
+        mixed.append('\0');
+        mixed.append("P\0\0\0\3png", 8);
+        mixed.append("xAn <k>apple</k><abr>n.</abr> pome\nof the tree");
+        mixed.append('\0');
+        QCOMPARE(StarDict::plainText(mixed, {}), QString("A fruit.\nAn n. pome\nof the tree"));
+        // A size that runs past the article is not followed.
+        QCOMPARE(StarDict::plainText(QByteArray("W\0\0\xff\xffoops", 9), {}), QString());
+        QCOMPARE(StarDict::plainText({}, "m"), QString());
+    }
+
+    void dictionariesTryTheWordsBaseForm()
+    {
+        QCOMPARE(Dictionaries::baseForms("hurried").value(0), QString("hurry"));
+        QVERIFY(Dictionaries::baseForms("running").contains("run"));
+        QVERIFY(Dictionaries::baseForms("making").contains("make"));
+        QVERIFY(Dictionaries::baseForms("Houses").contains("house"));
+        QVERIFY(Dictionaries::baseForms("stopped").contains("stop"));
+        QVERIFY(Dictionaries::baseForms("happiest").contains("happy"));
+        QVERIFY(Dictionaries::baseForms("glass").isEmpty());
+
+        QTemporaryDir dir;
+        writeStarDict(dir.path() + "/one", "One", "m", {{"hurry", "To go fast."}, {"pain", "An ache."}});
+        writeStarDict(dir.path() + "/sub/two", "Two", "m", {{"pain", "Bread, in French."}});
+        Dictionaries dictionaries({dir.path()});
+        QCOMPARE(dictionaries.names(), QStringList({"One", "Two"}));
+        // Every dictionary that has the word answers.
+        const auto pain = dictionaries.lookup("pain", "fr");
+        QCOMPARE(pain.size(), 2);
+        QCOMPARE(pain.value(1).dictionary, QString("Two"));
+        // An English inflection finds its headword; in a French book the
+        // same letters are left alone.
+        const auto hurried = dictionaries.lookup("Hurried", "en");
+        QCOMPARE(hurried.size(), 1);
+        QCOMPARE(hurried.value(0).headword, QString("hurry"));
+        QVERIFY(dictionaries.lookup("hurried", "fr").isEmpty());
+        // A dictionary answers only for books in the language its place
+        // names: "Seen" is German for lakes, and no help in an English book.
+        writeStarDict(dir.path() + "/deu-eng", "German", "m", {{"Seen", "lakes"}});
+        writeStarDict(dir.path() + "/fr/larousse", "Petit", "m", {{"seen", "pas un mot"}});
+        QVERIFY(dictionaries.lookup("seen", "en").isEmpty());
+        QCOMPARE(dictionaries.lookup("seen", "de-DE").value(0).dictionary, QString("German"));
+        QCOMPARE(dictionaries.lookup("seen", "fr").value(0).dictionary, QString("Petit"));
+        // Not knowing the book's language, all of them.
+        QCOMPARE(dictionaries.lookup("seen").size(), 2);
+        QCOMPARE(Dictionaries::languageOf("deu-eng/deu-eng.ifo"), QLocale::German);
+        QCOMPARE(Dictionaries::languageOf("en/wordnet/wn.ifo"), QLocale::English);
+        QCOMPARE(Dictionaries::languageOf("stardict-eng-fra-2.4.2/eng-fra.ifo"), QLocale::English);
+        QCOMPARE(Dictionaries::languageOf("new/websters.ifo"), QLocale::AnyLanguage);
+        QCOMPARE(Dictionaries::languageOf("wn.ifo"), QLocale::AnyLanguage);
+        // One added while running is found by the next lookup.
+        QVERIFY(dictionaries.lookup("zebra").isEmpty());
+        writeStarDict(dir.path() + "/three", "Three", "m", {{"zebra", "A striped horse."}});
+        QCOMPARE(dictionaries.lookup("zebra").size(), 1);
+    }
+
+    void aWordInAnInstalledDictionaryNeedsNoNetwork()
+    {
+        QTemporaryDir dir;
+        writeStarDict(dir.path() + "/one", "Pocket English", "m",
+                      {{"hurry", "/ˈhʌri/\n\nTo go fast.\n" + QByteArray(400, 'x')}});
+        Dictionary dictionary(nullptr, {dir.path()});
+        QSignalSpy changed(&dictionary, &Dictionary::changed);
+        dictionary.define("“hurried,”", "en-GB");
+        // Answered at once: nothing was asked of Wiktionary.
+        QCOMPARE(changed.count(), 1);
+        QVERIFY(!dictionary.busy());
+        QVERIFY(dictionary.offline());
+        QCOMPARE(dictionary.word(), QString("hurried"));
+        QCOMPARE(dictionary.source(), QString("Pocket English"));
+        QCOMPARE(dictionary.entries().size(), 1);
+        QCOMPARE(dictionary.entries()[0].toMap()["partOfSpeech"].toString(), QString("Pocket English · hurry"));
+        QVERIFY(dictionary.entries()[0].toMap()["text"].toString().startsWith("/ˈhʌri/\n\nTo go fast."));
+        // The Words list keeps the article's opening, on one line.
+        QVERIFY(dictionary.summary().startsWith("/ˈhʌri/ To go fast. xxx"));
+        QCOMPARE(dictionary.summary().size(), 241);
+        QVERIFY(dictionary.summary().endsWith("…"));
+        QVERIFY(dictionary.error().isEmpty());
+    }
+
+    void defineCommandReadsInstalledDictionaries()
+    {
+        QTemporaryDir dir;
+        auto none = runNell(dir.path(), {"define", "hurry"});
+        QCOMPARE(none.code, 1);
+        QVERIFY2(none.err.contains("No dictionaries installed"), none.err.constData());
+        QVERIFY(none.err.contains((dir.path() + "/data/nell/dictionaries").toUtf8()));
+
+        writeStarDict(dir.path() + "/data/nell/dictionaries/pocket", "Pocket English", "m", {{"hurry", "To go fast."}});
+        auto listed = runNell(dir.path(), {"define"});
+        QCOMPARE(listed.code, 0);
+        QCOMPARE(listed.out.trimmed(), QByteArray("Pocket English"));
+        auto found = runNell(dir.path(), {"define", "hurried", "--json"});
+        QCOMPARE(found.code, 0);
+        const auto entry = QJsonDocument::fromJson(found.out).object()["entries"].toArray()[0].toObject();
+        QCOMPARE(entry["dictionary"].toString(), QString("Pocket English"));
+        QCOMPARE(entry["headword"].toString(), QString("hurry"));
+        QCOMPARE(entry["text"].toString(), QString("To go fast."));
+        auto missing = runNell(dir.path(), {"define", "zebra"});
+        QCOMPARE(missing.code, 1);
+        QVERIFY(missing.err.contains("zebra"));
+    }
+
 private:
     struct Run {
         int code = -1;
@@ -1831,6 +2031,111 @@ private:
         Library::writeJson(data + "/quire/library.json",
                            QJsonObject{{"version", 1}, {"books", QJsonArray{QJsonObject{{"id", "abc"}, {"cover", cover}}}}});
         return cover;
+    }
+
+    // A gzip file's bytes.
+    static QByteArray gzip(const QByteArray &data)
+    {
+        z_stream stream;
+        memset(&stream, 0, sizeof stream);
+        if (deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 15 + 16, 8, Z_DEFAULT_STRATEGY) != Z_OK)
+            qFatal("deflateInit2 failed");
+        QByteArray out(int(deflateBound(&stream, uLong(data.size()))) + 64, Qt::Uninitialized);
+        stream.next_in = reinterpret_cast<Bytef *>(const_cast<char *>(data.constData()));
+        stream.avail_in = uInt(data.size());
+        stream.next_out = reinterpret_cast<Bytef *>(out.data());
+        stream.avail_out = uInt(out.size());
+        if (deflate(&stream, Z_FINISH) != Z_STREAM_END)
+            qFatal("deflate failed");
+        out.truncate(int(stream.total_out));
+        deflateEnd(&stream);
+        return out;
+    }
+
+    // A dictzip file's bytes: gzip whose header lists each chunk's packed
+    // size, every chunk flushed so it unpacks on its own.
+    static QByteArray dictzip(const QByteArray &data, int chunkLength)
+    {
+        z_stream stream;
+        memset(&stream, 0, sizeof stream);
+        if (deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) != Z_OK)
+            qFatal("deflateInit2 failed");
+        QByteArray body, sizes;
+        char buffer[4096];
+        int chunks = 0;
+        for (int position = 0; position < data.size(); position += chunkLength, ++chunks) {
+            const QByteArray part = data.mid(position, chunkLength);
+            stream.next_in = reinterpret_cast<Bytef *>(const_cast<char *>(part.constData()));
+            stream.avail_in = uInt(part.size());
+            stream.next_out = reinterpret_cast<Bytef *>(buffer);
+            stream.avail_out = sizeof buffer;
+            deflate(&stream, Z_FULL_FLUSH);
+            const int produced = int(sizeof buffer - stream.avail_out);
+            body.append(buffer, produced);
+            sizes.append(char(produced & 0xff)).append(char(produced >> 8));
+        }
+        stream.next_out = reinterpret_cast<Bytef *>(buffer);
+        stream.avail_out = sizeof buffer;
+        deflate(&stream, Z_FINISH);
+        body.append(buffer, int(sizeof buffer - stream.avail_out));
+        deflateEnd(&stream);
+
+        const auto le16 = [](int value) { return QByteArray().append(char(value & 0xff)).append(char(value >> 8)); };
+        const auto le32 = [](quint32 value) {
+            return QByteArray().append(char(value & 0xff)).append(char((value >> 8) & 0xff))
+                               .append(char((value >> 16) & 0xff)).append(char(value >> 24));
+        };
+        QByteArray file("\x1f\x8b\x08\x0c\0\0\0\0\0\x03", 10);  // extra field and a file name
+        file += le16(4 + 6 + sizes.size()) + "RA" + le16(6 + sizes.size()) + le16(1) + le16(chunkLength) + le16(chunks) + sizes;
+        file += QByteArray("dict.dict", 10);
+        file += body;
+        file += le32(quint32(crc32(crc32(0, nullptr, 0), reinterpret_cast<const Bytef *>(data.constData()), uInt(data.size()))));
+        file += le32(quint32(data.size()));
+        return file;
+    }
+
+    // A StarDict dictionary in a directory, as dict.ifo and its files;
+    // returns the .ifo. Entries are written in the order given. Packed, the
+    // index is gzip, the articles dictzip in 64-byte chunks, and offsets
+    // are 64-bit, to cover every form the format takes.
+    static QString writeStarDict(const QString &directory, const QByteArray &name, const QByteArray &types,
+                                 const QList<QPair<QByteArray, QByteArray>> &entries, bool packed = false,
+                                 const QList<QPair<QByteArray, QByteArray>> &synonyms = {}, bool wide = false)
+    {
+        const auto be32 = [](quint32 value) {
+            return QByteArray().append(char(value >> 24)).append(char((value >> 16) & 0xff))
+                               .append(char((value >> 8) & 0xff)).append(char(value & 0xff));
+        };
+        QByteArray index, articles, synonymIndex;
+        for (const auto &entry : entries) {
+            index += entry.first;
+            index += '\0';
+            if (wide)
+                index += be32(0);
+            index += be32(quint32(articles.size())) + be32(quint32(entry.second.size()));
+            articles += entry.second;
+        }
+        for (const auto &synonym : synonyms) {
+            int target = 0;
+            while (target < entries.size() && entries[target].first != synonym.second)
+                ++target;
+            synonymIndex += synonym.first;
+            synonymIndex += '\0';
+            synonymIndex += be32(quint32(target));
+        }
+        QByteArray ifo = "StarDict's dict ifo file\nversion=" + QByteArray(wide ? "3.0.0" : "2.4.2") + "\nbookname=" + name +
+                         "\nwordcount=" + QByteArray::number(entries.size()) + "\nidxfilesize=" +
+                         QByteArray::number(index.size()) + "\nsametypesequence=" + types + "\n";
+        if (wide)
+            ifo += "idxoffsetbits=64\n";
+        if (!synonyms.isEmpty())
+            ifo += "synwordcount=" + QByteArray::number(synonyms.size()) + "\n";
+        write(directory + "/dict.ifo", ifo);
+        write(directory + (packed ? "/dict.idx.gz" : "/dict.idx"), packed ? gzip(index) : index);
+        write(directory + (packed ? "/dict.dict.dz" : "/dict.dict"), packed ? dictzip(articles, 64) : articles);
+        if (!synonyms.isEmpty())
+            write(directory + "/dict.syn", synonymIndex);
+        return directory + "/dict.ifo";
     }
 
     static void write(const QString &path, const QByteArray &contents)

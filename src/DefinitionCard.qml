@@ -3,9 +3,9 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 
-// A word's meaning, from Wiktionary. Every word looked up is kept in the
-// book's Words list with the sentence it came from, as Kindle's Vocabulary
-// Builder does.
+// A word's meaning, from an installed dictionary or, failing that,
+// Wiktionary. Every word looked up is kept in the book's Words list with
+// the sentence it came from, as Kindle's Vocabulary Builder does.
 Popup {
     id: card
     signal searchRequested(string word)
@@ -13,12 +13,19 @@ Popup {
     // What was asked for, so Retry asks again for exactly that.
     property string lookedUp
 
+    // From asking until the card is dismissed. Not `opened`, which only
+    // turns true once the card has finished appearing: an installed
+    // dictionary answers before that, and a quick network can.
+    property bool asking: false
+
     function lookUp(text) {
         saved = false
         lookedUp = text
+        asking = true
         dictionary.define(text, reader.language)
         open()
     }
+    onAboutToHide: asking = false
 
     width: Math.min(420, parent.width - 24)
     height: Math.min(implicitHeight, 420)
@@ -38,7 +45,7 @@ Popup {
     Connections {
         target: dictionary
         function onChanged() {
-            if (card.opened && !card.saved && !dictionary.busy && dictionary.entries.length > 0) {
+            if (card.asking && !card.saved && !dictionary.busy && dictionary.entries.length > 0) {
                 card.saved = true
                 reader.addWord(dictionary.word, dictionary.summary())
             }
@@ -100,9 +107,11 @@ Popup {
                         Layout.fillWidth: true
                         spacing: 4
                         Label {
+                            Layout.fillWidth: true
                             text: modelData.partOfSpeech
                             font.italic: true
                             color: Tokens.accentText
+                            elide: Text.ElideRight
                         }
                         Repeater {
                             model: modelData.definitions
@@ -115,6 +124,15 @@ Popup {
                                 color: Tokens.text
                             }
                         }
+                        // An installed dictionary's article, as it wrote it.
+                        Label {
+                            visible: text.length > 0
+                            Layout.fillWidth: true
+                            text: modelData.text || ""
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            color: Tokens.text
+                        }
                     }
                 }
             }
@@ -124,9 +142,23 @@ Popup {
             Layout.fillWidth: true
             Label {
                 Layout.fillWidth: true
-                text: card.saved ? qsTr("Wiktionary · Saved to Words") : qsTr("Wiktionary")
+                // An installed dictionary is already named above its article.
+                text: dictionary.offline ? (card.saved ? qsTr("Saved to Words") : "")
+                                         : card.saved ? qsTr("Wiktionary · Saved to Words") : qsTr("Wiktionary")
                 color: Tokens.textSecondary
                 font.pixelSize: 12
+                elide: Text.ElideRight
+            }
+            // An installed dictionary answered; Wiktionary is still a click away.
+            Button {
+                visible: dictionary.offline
+                flat: true
+                text: "Wiktionary"
+                enabled: !dictionary.busy
+                onClicked: dictionary.defineOnline()
+                ToolTip.visible: hovered
+                ToolTip.delay: 600
+                ToolTip.text: qsTr("Look this word up in Wiktionary instead")
             }
             Button {
                 flat: true
