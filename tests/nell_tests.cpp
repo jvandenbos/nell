@@ -1070,13 +1070,20 @@ private slots:
         Reader reader(&library, &preferences);
         QVERIFY(reader.openBook(library.add(makeEpub(dir.path()))));
         // A spread whose left page ends chapter one and whose right page
-        // starts chapter two.
+        // starts chapter two. The left page must run past the point the
+        // drag starts from: where chapter one ends on a line or two (which
+        // depends on the fonts installed), every point on that page is the
+        // chapter's last position and there is nothing to drag across.
         bool found = false;
         for (int height = 400; height <= 900 && !found; height += 7) {
             reader.setGeometry(820, height, 2, 20);
             QTRY_COMPARE(reader.columns(), 2);
             QTest::qWait(60);
-            found = reader.toc()[1].toMap()["page"].toInt() % 2 == 0;
+            if (reader.toc()[1].toMap()["page"].toInt() % 2 != 0)
+                continue;
+            reader.goToToc(1);
+            for (const auto &line : reader.lines())
+                found = found || (line.toMap()["x"].toDouble() < 1 && line.toMap()["y"].toDouble() > 160);
         }
         QVERIFY(found);
         reader.goToToc(1);

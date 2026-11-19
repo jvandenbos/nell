@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-18
+
+### Fixed
+
+- The test suite no longer depends on the fonts installed. With only DejaVu,
+  as in Omarchy's package builder, the drag-across-chapters test picked a
+  spread whose left page held one short line, found nothing to drag over, and
+  failed `check()`. It now looks for a spread with text under the drag. No
+  change to the app.
+
 ## [0.4.0] - 2026-11-02
 
 ### Added
@@ -185,7 +195,8 @@ All notable changes to this project are documented here. The format follows
 - `quire list`, `add`, `info`, `notes`, and `skill` commands for scripts and agents.
 - Danish, Dutch, French, German, and Spanish translations.
 
-[Unreleased]: https://github.com/jvandenbos/nell/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/jvandenbos/nell/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/jvandenbos/nell/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/jvandenbos/nell/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/jvandenbos/nell/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jvandenbos/nell/compare/v0.1.0...v0.2.0
